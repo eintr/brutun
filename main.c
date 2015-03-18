@@ -215,6 +215,8 @@ main(int argc, char **argv)
 
 	snprintf(cmdline, BUFSIZE, "ip addr add dev %s %s peer %s", tun_name, tun_local_addr, tun_peer_addr);
 	shell(cmdline);
+	snprintf(cmdline, BUFSIZE, "ip link set dev %s up", tun_name, tun_local_addr, tun_peer_addr);
+	shell(cmdline);
 
 	relay(sd, tun_fd, &peer_addr);
 
