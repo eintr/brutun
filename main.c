@@ -95,79 +95,6 @@ static int tun_alloc(char *dev, int flags) {
 	return fd;
 }
 
-#define	BUFSIZE	(65536+4096)
-static void relay(int sd, int tunfd, struct sockaddr_in *peer_addr)
-{
-	char buffer[BUFSIZE];
-	int len, ret;
-	pid_t pid;
-	struct sockaddr_in from_addr;
-	socklen_t from_addr_len;
-
-	pid = fork();
-	if (pid==0) {
-		from_addr_len = sizeof(from_addr);
-		while(1) {
-			len = recvfrom(sd, buffer, BUFSIZE, 0, (void*)&from_addr, &from_addr_len);
-			if (len==0) {
-				continue;
-			}
-//			if (memcmp(&from_addr, &peer_addr, sizeof(from_addr))!=0) {
-			if (from_addr.sin_addr.s_addr != peer_addr->sin_addr.s_addr || from_addr.sin_port != peer_addr->sin_port) {
-				fprintf(stderr, "Unknown source packet, drop.\n");
-				continue;
-			}
-			fprintf(stderr, "socket: pop %d bytes.\n", len);
-			while (1) {
-				ret = write(tunfd, buffer, len);
-				if (ret<0) {
-					if (errno==EINTR) {
-						continue;
-					}
-					fprintf(stderr, "write(tunfd): %m\n");
-					exit(1);
-				}
-				if (ret==0) {
-					exit(0);
-				}
-				break;
-			}
-			fprintf(stderr, "tunfd: relayed %d bytes.\n", ret);
-		}
-		exit(0);
-	}
-
-	pid = fork();
-	if (pid==0) {
-		from_addr_len = sizeof(from_addr);
-		while(1) {
-			len = read(tunfd, buffer, BUFSIZE);
-			if (len==0) {
-				continue;
-			}
-			fprintf(stderr, "tunfd: pop %d bytes.\n", len);
-			while (1) {
-				ret = sendto(sd, buffer, len, 0, (void*)peer_addr, sizeof(*peer_addr));
-				if (ret<0) {
-					if (errno==EINTR) {
-						continue;
-					}
-					fprintf(stderr, "sendto(sd): %m\n");
-					exit(1);
-				}
-				break;
-			}
-			fprintf(stderr, "socket: relayed %d bytes.\n", ret);
-		}
-		exit(0);
-	}
-
-	close(sd);
-	close(tunfd);
-	wait(NULL);
-	wait(NULL);
-}
-
 static int shell(const char *cmd)
 {
 	int ret;
@@ -181,6 +108,8 @@ static int shell(const char *cmd)
 	}
 	return ret;
 }
+
+#define	BUFSIZE	1024
 
 int
 main(int argc, char **argv)
