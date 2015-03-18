@@ -112,7 +112,8 @@ static void relay(int sd, int tunfd, struct sockaddr_in *peer_addr)
 			if (len==0) {
 				continue;
 			}
-			if (memcmp(&from_addr, &peer_addr, sizeof(from_addr))!=0) {
+//			if (memcmp(&from_addr, &peer_addr, sizeof(from_addr))!=0) {
+			if (from_addr.sin_addr.s_addr != peer_addr->sin_addr.s_addr || from_addr.sin_port != peer_addr->sin_port) {
 				fprintf(stderr, "Unknown source packet, drop.\n");
 				continue;
 			}
