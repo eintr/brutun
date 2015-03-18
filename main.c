@@ -116,6 +116,7 @@ static void relay(int sd, int tunfd, struct sockaddr_in *peer_addr)
 				fprintf(stderr, "Unknown source packet, drop.\n");
 				continue;
 			}
+			fprintf(stderr, "socket: pop %d bytes.\n", len);
 			while (1) {
 				ret = write(tunfd, buffer, len);
 				if (ret<0) {
@@ -130,6 +131,7 @@ static void relay(int sd, int tunfd, struct sockaddr_in *peer_addr)
 				}
 				break;
 			}
+			fprintf(stderr, "tunfd: relayed %d bytes.\n", ret);
 		}
 		exit(0);
 	}
@@ -142,6 +144,7 @@ static void relay(int sd, int tunfd, struct sockaddr_in *peer_addr)
 			if (len==0) {
 				continue;
 			}
+			fprintf(stderr, "tunfd: pop %d bytes.\n", len);
 			while (1) {
 				ret = sendto(sd, buffer, len, 0, (void*)peer_addr, sizeof(*peer_addr));
 				if (ret<0) {
@@ -153,6 +156,7 @@ static void relay(int sd, int tunfd, struct sockaddr_in *peer_addr)
 				}
 				break;
 			}
+			fprintf(stderr, "socket: relayed %d bytes.\n", ret);
 		}
 		exit(0);
 	}
@@ -215,7 +219,7 @@ main(int argc, char **argv)
 
 	snprintf(cmdline, BUFSIZE, "ip addr add dev %s %s peer %s", tun_name, tun_local_addr, tun_peer_addr);
 	shell(cmdline);
-	snprintf(cmdline, BUFSIZE, "ip link set dev %s up", tun_name, tun_local_addr, tun_peer_addr);
+	snprintf(cmdline, BUFSIZE, "ip link set dev %s up", tun_name);
 	shell(cmdline);
 
 	relay(sd, tun_fd, &peer_addr);
