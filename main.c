@@ -7,11 +7,14 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <errno.h>
+#include <arpa/inet.h>
+#include <sys/types.h>
 
 #include <linux/if.h>
 #include <linux/if_tun.h>
 
 #include "protocol.h"
+#include "relayer.h"
 
 static char *remote_ip=NULL;
 static int remote_port=0;
@@ -116,15 +119,20 @@ main(int argc, char **argv)
 {
 	int sd, tun_fd;
 	char tun_name[IFNAMSIZ];
-	struct sockaddr_in local_addr, peer_addr;
-	socklen_t peer_addr_len;
+	struct sockaddr_in local_addr, *peer_addr;
 	char cmdline[BUFSIZE];
 
 	parse_args(argc, argv);
 
-	peer_addr.sin_family = PF_INET;
-	inet_pton(PF_INET, remote_ip, &peer_addr.sin_addr);
-	peer_addr.sin_port = htons(remote_port);
+	if (remote_ip!=NULL) {
+		peer_addr = malloc(sizeof(*peer_addr));
+
+		peer_addr->sin_family = PF_INET;
+		inet_pton(PF_INET, remote_ip, &peer_addr->sin_addr);
+		peer_addr->sin_port = htons(remote_port);
+	} else {
+		peer_addr = NULL;
+	}
 
 	sd = socket(PF_INET, SOCK_DGRAM, 0);
 	if (sd<0) {
@@ -152,7 +160,7 @@ main(int argc, char **argv)
 	snprintf(cmdline, BUFSIZE, "ip link set dev %s up", tun_name);
 	shell(cmdline);
 
-	relay(sd, tun_fd, &peer_addr);
+	relay(sd, tun_fd, peer_addr);
 
 	close(sd);
 	close(tun_fd);
