@@ -1,6 +1,8 @@
 #ifndef PROTOCOL_H
 #define PROTOCOL_H
 
+#define	DEFAULT_PORT	60000
+
 enum {
 	CODE_DATA=0,
 	CODE_PING,
@@ -23,7 +25,7 @@ struct frame_st {
 			uint8_t fecg_size;
 			uint8_t fecg_seg[0];
 		} fec_segment;
-	}
+	};
 };
 
 #endif

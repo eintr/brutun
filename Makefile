@@ -4,7 +4,7 @@ LDFLAGS+=-lpthread -lm -lssl -lcrypto -lrt
 
 SERVERFNAME=warmhole
 
-sources=main.c relayer.c
+sources=main.c relayer.c json_conf.c cJSON.c myrand.c
 
 objects=$(sources:.c=.o)
 

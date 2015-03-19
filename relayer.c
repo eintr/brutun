@@ -12,12 +12,20 @@
 #include <sys/types.h>
 
 #include "protocol.h"
+#include "json_conf.h"
+#include "myrand.h"
 
 #define	BUFSIZE	(65536+4096)
 
 struct arg_relay_st {
 	int socket, tun;
 	struct sockaddr_in *peer_addr;
+
+	int tbf_cps, tbf_burst;
+
+	int drop_shift, drop_num;
+
+	int latency;
 };
 
 static void *thr_rcver(void *p)
@@ -78,42 +86,70 @@ static void *thr_snder(void *p)
 	struct arg_relay_st *arg=p;
 	char buffer[BUFSIZE];
 	int len, ret;
+	unsigned int seed;
+
+	seed = getpid();
 
 	while(1) {
 		len = read(arg->tun, buffer, BUFSIZE);
 		if (len==0) {
 			continue;
 		}
-		fprintf(stderr, "tunfd: pop %d bytes.\n", len);
+		//fprintf(stderr, "tunfd: pop %d bytes.\n", len);
 		if (arg->peer_addr==NULL) {
 			fprintf(stderr, "Warning: Passive side can't send packets before peer address is discovered, drop.\n");
 			continue;
 		}
-		while (1) {
-			ret = sendto(arg->socket, buffer, len, 0, (void*)arg->peer_addr, sizeof(*arg->peer_addr));
-			if (ret<0) {
-				if (errno==EINTR) {
-					continue;
+		if (p_judge(&seed, arg->drop_shift, arg->drop_num)) {
+			while (1) {
+				ret = sendto(arg->socket, buffer, len, 0, (void*)arg->peer_addr, sizeof(*arg->peer_addr));
+				if (ret<0) {
+					if (errno==EINTR) {
+						continue;
+					}
+					//fprintf(stderr, "sendto(sd): %m\n");
+					exit(1);
 				}
-				fprintf(stderr, "sendto(sd): %m\n");
-				exit(1);
+				break;
 			}
-			break;
+			fprintf(stderr, "socket: relayed %d bytes.\n", ret);
+		} else {
+			//fprintf(stderr, "Dropped a packet.\n");
 		}
-		fprintf(stderr, "socket: relayed %d bytes.\n", ret);
 	}
 	pthread_exit(NULL);
 }
 
-void relay(int sd, int tunfd, struct sockaddr_in *peer_addr)
+void relay(int sd, int tunfd, cJSON *conf)
 {
 	struct arg_relay_st arg;
 	pthread_t snder, rcver;
 	int err;
+	char *remote_ip;
+	double droprate;
+	struct sockaddr_in *peer_addr;
+
+	remote_ip = conf_get_str("RemoteAddress", conf);
+	if (remote_ip!=NULL) {
+		peer_addr = malloc(sizeof(*peer_addr));
+
+		peer_addr->sin_family = PF_INET;
+		inet_pton(PF_INET, remote_ip, &peer_addr->sin_addr);
+		peer_addr->sin_port = htons(conf_get_int("RemotePort", conf));
+	} else {
+		printf("No RemoteAddress specified, running in passive mode.\n");
+		peer_addr = NULL;
+	}
 
 	arg.socket = sd;
 	arg.tun = tunfd;
 	arg.peer_addr = peer_addr;
+	arg.tbf_cps = conf_get_int("TBF_Bps", conf);
+	arg.tbf_burst = conf_get_int("TBF_burst", conf);
+	droprate = conf_get_double("DropRate", conf)*1000.0;
+	arg.drop_shift = 3;
+	arg.drop_num = (int)droprate;
+	arg.latency = conf_get_int("Latency", conf);
 
 	err = pthread_create(&snder, NULL, thr_snder, &arg);
 	if (err) {

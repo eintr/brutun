@@ -15,11 +15,9 @@
 
 #include "protocol.h"
 #include "relayer.h"
+#include "json_conf.h"
 
-static char *remote_ip=NULL;
-static int remote_port=0;
-static char *tun_local_addr=NULL;
-static char *tun_peer_addr=NULL;
+static char *config_file;
 
 static void parse_args(int argc, char **argv)
 {
@@ -28,24 +26,15 @@ static void parse_args(int argc, char **argv)
 	do {
 		c=getopt(argc, argv, "R:P:l:p:");
 		switch (c) {
-			case 'R':
-				remote_ip = optarg;
-				break;
-			case 'P':
-				remote_port = strtol(optarg, NULL, 10);
-				break;
-			case 'l':
-				tun_local_addr = optarg;
-				break;
-			case 'p':
-				tun_peer_addr = optarg;
+			case 'c':
+				config_file = optarg;
 				break;
 			default:
 				break;
 		}
 	} while (c!=-1);
 
-	if (tun_local_addr==NULL || tun_peer_addr==NULL) {
+	if (config_file==NULL) {
 		fprintf(stderr, "Usage:!!\n");
 		abort();
 	}
@@ -105,9 +94,9 @@ static int shell(const char *cmd)
 	printf("run: %s  ...  ", cmd);
 	ret = system(cmd);
 	if (ret==-1) {
-		printf("failed.\n");
+		printf("failed: %m.\n");
 	} else {
-		printf("over, status=%d.\n", ret);
+		printf("status=%d.\n", ret);
 	}
 	return ret;
 }
@@ -119,19 +108,24 @@ main(int argc, char **argv)
 {
 	int sd, tun_fd;
 	char tun_name[IFNAMSIZ];
-	struct sockaddr_in local_addr, *peer_addr;
+	struct sockaddr_in local_addr;
 	char cmdline[BUFSIZE];
+	cJSON *conf;
+	char *tun_local_addr, *tun_peer_addr;
 
 	parse_args(argc, argv);
 
-	if (remote_ip!=NULL) {
-		peer_addr = malloc(sizeof(*peer_addr));
+	conf = conf_load_file(config_file);
+	if (conf==NULL) {
+		fprintf(stderr, "Load config failed.\n");
+		exit(1);
+	}
 
-		peer_addr->sin_family = PF_INET;
-		inet_pton(PF_INET, remote_ip, &peer_addr->sin_addr);
-		peer_addr->sin_port = htons(remote_port);
-	} else {
-		peer_addr = NULL;
+	tun_local_addr = conf_get_str("TunnelLocalAddr", conf);
+	tun_peer_addr = conf_get_str("TunnelPeerAddr", conf);
+	if (tun_local_addr==NULL || tun_peer_addr==NULL) {
+		fprintf(stderr, "Must define TunnelLocalAddr and TunnelPeerAddr in config file!\n");
+		exit(1);
 	}
 
 	sd = socket(PF_INET, SOCK_DGRAM, 0);
@@ -142,14 +136,14 @@ main(int argc, char **argv)
 
 	local_addr.sin_family = PF_INET;
 	local_addr.sin_addr.s_addr = 0;
-	local_addr.sin_port = htons(remote_port);
+	local_addr.sin_port = htons(conf_get_int("LocalPort", conf));
 	if (bind(sd, (void*)&local_addr, sizeof(local_addr))<0) {
 		perror("bind()");
 		exit(1);
 	}
 
 	tun_name[0]='\0';
-	tun_fd = tun_alloc(tun_name, IFF_TUN|IFF_NO_PI);
+	tun_fd = tun_alloc(tun_name, IFF_TUN | IFF_NO_PI);
 	if (tun_fd<0) {
 		perror("tun_alloc()");
 		exit(1);
@@ -160,7 +154,7 @@ main(int argc, char **argv)
 	snprintf(cmdline, BUFSIZE, "ip link set dev %s up", tun_name);
 	shell(cmdline);
 
-	relay(sd, tun_fd, peer_addr);
+	relay(sd, tun_fd, conf);
 
 	close(sd);
 	close(tun_fd);
