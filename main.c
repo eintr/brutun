@@ -24,7 +24,7 @@ static void parse_args(int argc, char **argv)
 	int c;
 
 	do {
-		c=getopt(argc, argv, "R:P:l:p:");
+		c=getopt(argc, argv, "c:");
 		switch (c) {
 			case 'c':
 				config_file = optarg;
