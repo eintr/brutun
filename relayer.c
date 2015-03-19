@@ -100,7 +100,7 @@ static void *thr_snder(void *p)
 			fprintf(stderr, "Warning: Passive side can't send packets before peer address is discovered, drop.\n");
 			continue;
 		}
-		if (p_judge(&seed, arg->drop_shift, arg->drop_num)) {
+		if (!p_judge(&seed, arg->drop_shift, arg->drop_num)) {
 			while (1) {
 				ret = sendto(arg->socket, buffer, len, 0, (void*)arg->peer_addr, sizeof(*arg->peer_addr));
 				if (ret<0) {
