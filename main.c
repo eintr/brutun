@@ -1,3 +1,11 @@
+/********************************************************
+ *  Sorry, no garbage infomations here.
+ *  Lisence: read the LISENCE file,
+ *  Author(s): read the AUTHOR file and the git commit log,
+ *  Code history: read the git commit log.
+ *  That's all.
+ ********************************************************/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
