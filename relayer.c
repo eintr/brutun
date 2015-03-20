@@ -14,6 +14,8 @@
 #include "protocol.h"
 #include "json_conf.h"
 #include "myrand.h"
+#include "util_time.h"
+#include "ds_llist.h"
 
 #define	BUFSIZE	(65536+4096)
 
@@ -26,7 +28,34 @@ struct arg_relay_st {
 	int drop_shift, drop_num;
 
 	int latency;
+	llist_t *q_tbf, *q_delay, *q_drop, *q_send;
 };
+
+static int token = 0;
+static pthread_mutex_t mut = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+
+static void *thr_tbf_keeper(void *p)
+{
+	struct arg_relay_st *arg=p;
+	time_t now, time0;
+
+	time0 = systimestamp_ms();
+	while(1) {
+		now = systimestamp_ms();
+		pthread_mutex_lock(&mut);
+		token += arg->tbf_cps*(now-time0)/1000;
+		if (token > arg->tbf_burst) {
+			token = arg->tbf_burst;
+		}
+		fprintf(stderr, "%d ms passed, token += %d (= %d).\n", now-time0, arg->tbf_cps*(now-time0)/1000, token);
+		time0 = now;
+		pthread_cond_signal(&cond);
+		pthread_mutex_unlock(&mut);
+		usleep(1000000);
+	}
+	pthread_exit(NULL);
+}
 
 static void *thr_rcver(void *p)
 {
@@ -60,14 +89,14 @@ static void *thr_rcver(void *p)
 				continue;
 			}
 		}
-		fprintf(stderr, "socket: pop %d bytes.\n", len);
+		//fprintf(stderr, "socket: pop %d bytes.\n", len);
 		while (1) {
 			ret = write(arg->tun, buffer, len);
 			if (ret<0) {
 				if (errno==EINTR) {
 					continue;
 				}
-				fprintf(stderr, "write(tunfd): %m\n");
+				//fprintf(stderr, "write(tunfd): %m\n");
 				goto quit;
 			}
 			if (ret==0) {
@@ -75,46 +104,136 @@ static void *thr_rcver(void *p)
 			}
 			break;
 		}
-		fprintf(stderr, "tunfd: relayed %d bytes.\n", ret);
+		//fprintf(stderr, "tunfd: relayed %d bytes.\n", ret);
 	}
 quit:
 	pthread_exit(NULL);
 }
 
-static void *thr_snder(void *p)
+struct pkt_st {
+	time_t arrive_time;
+	int len;
+	void *pkt;
+};
+
+static void *thr_snder_send(void *p)
 {
 	struct arg_relay_st *arg=p;
-	char buffer[BUFSIZE];
-	int len, ret;
+	struct pkt_st *buf;
+	int ret;
+
+	fprintf(stderr, "thr_snder_send(): started.\n");
+
+	while (1) {
+		llist_fetch_head(arg->q_send, &buf);
+		while (1) {
+			ret = sendto(arg->socket, buf->pkt, buf->len, 0, (void*)arg->peer_addr, sizeof(*arg->peer_addr));
+			if (ret<0) {
+				if (errno==EINTR) {
+					continue;
+				}
+				fprintf(stderr, "sendto(sd): %m, drop\n");
+			}
+			break;
+		}
+		//fprintf(stderr, "thr_snder_send(): %d bytes sent to socket.\n", ret);
+		free(buf->pkt);
+		free(buf);
+	}
+	pthread_exit(NULL);
+}
+
+static void *thr_snder_drop(void *p)
+{
+	struct arg_relay_st *arg=p;
+	struct pkt_st *buf;
 	unsigned int seed;
 
+	fprintf(stderr, "thr_snder_drop(): started.\n");
+
 	seed = getpid();
+
+	while(1) {
+		llist_fetch_head(arg->q_drop, &buf);
+		if (!p_judge(&seed, arg->drop_shift, arg->drop_num)) {
+			llist_append(arg->q_send, buf);
+		}
+	}
+	pthread_exit(NULL);
+}
+
+static void *thr_snder_delay(void *p)
+{
+	struct arg_relay_st *arg=p;
+	struct pkt_st *buf;
+	time_t now;
+
+	fprintf(stderr, "thr_snder_delay(): started.\n");
+
+	while (1) {
+		llist_fetch_head(arg->q_delay, &buf);
+		now = systimestamp_ms();
+		while (buf->arrive_time + arg->latency < now) {
+			usleep(now - (buf->arrive_time + arg->latency));
+			now = systimestamp_ms();
+		}
+		llist_append(arg->q_drop, buf);
+	}
+	pthread_exit(NULL);
+}
+
+static void *thr_snder_tbf(void *p)
+{
+	struct arg_relay_st *arg=p;
+	struct pkt_st *buf;
+
+	fprintf(stderr, "thr_snder_tbf(): started.\n");
+
+	while (1) {
+		llist_fetch_head(arg->q_tbf, &buf);
+		pthread_mutex_lock(&mut);
+		while (token < buf->len) {
+			pthread_cond_wait(&cond, &mut);
+		}
+		token -= buf->len;
+		pthread_mutex_unlock(&mut);
+		llist_append(arg->q_send, buf);	// DEBUGGING
+		//fprintf(stderr, "thr_snder_tbf(): %d bytes passed.\n", buf->len);
+	}
+	pthread_exit(NULL);
+}
+
+static void *thr_snder_pkt(void *p)
+{
+	struct arg_relay_st *arg=p;
+	struct pkt_st *buf;
+	char buffer[BUFSIZE];
+	int len;
+
+	fprintf(stderr, "thr_snder_pkt(): started.\n");
 
 	while(1) {
 		len = read(arg->tun, buffer, BUFSIZE);
 		if (len==0) {
 			continue;
 		}
-		//fprintf(stderr, "tunfd: pop %d bytes.\n", len);
 		if (arg->peer_addr==NULL) {
 			fprintf(stderr, "Warning: Passive side can't send packets before peer address is discovered, drop.\n");
 			continue;
 		}
-		if (!p_judge(&seed, arg->drop_shift, arg->drop_num)) {
-			while (1) {
-				ret = sendto(arg->socket, buffer, len, 0, (void*)arg->peer_addr, sizeof(*arg->peer_addr));
-				if (ret<0) {
-					if (errno==EINTR) {
-						continue;
-					}
-					//fprintf(stderr, "sendto(sd): %m\n");
-					exit(1);
-				}
-				break;
-			}
-			fprintf(stderr, "socket: relayed %d bytes.\n", ret);
+
+		buf = malloc(sizeof(*buf));
+		buf->arrive_time = systimestamp_ms();
+		buf->len = len;
+		buf->pkt = malloc(len);
+		memcpy(buf->pkt, buffer, len);
+
+		if (llist_append_nb(arg->q_tbf, buf)!=0) {
+			fprintf(stderr, "llist_append_nb() failed, drop packet!\n");
+			free(buf->pkt);
+			free(buf);
 		} else {
-			//fprintf(stderr, "Dropped a packet.\n");
+			//fprintf(stderr, "thr_snder_pkt(): %d bytes passed.\n", len);
 		}
 	}
 	pthread_exit(NULL);
@@ -123,7 +242,7 @@ static void *thr_snder(void *p)
 void relay(int sd, int tunfd, cJSON *conf)
 {
 	struct arg_relay_st arg;
-	pthread_t snder, rcver;
+	pthread_t rcver, snder_pkt, snder_tbf, snder_delay, snder_drop, snder_send, tbf_keeper;
 	int err;
 	char *remote_ip;
 	double droprate;
@@ -151,7 +270,61 @@ void relay(int sd, int tunfd, cJSON *conf)
 	arg.drop_num = (int)droprate;
 	arg.latency = conf_get_int("Latency", conf);
 
-	err = pthread_create(&snder, NULL, thr_snder, &arg);
+	arg.q_tbf = llist_new(150000);	// 150000 = 15000(qps of 100M ethernet) * 10(seconds)
+	if (arg.q_tbf==NULL) {
+		fprintf(stderr, "Can't init queue.\n");
+		exit(1);
+	}
+
+	arg.q_delay = llist_new(150000);	// 150000 = 15000(qps of 100M ethernet) * 10(seconds)
+	if (arg.q_delay==NULL) {
+		fprintf(stderr, "Can't init queue.\n");
+		exit(1);
+	}
+
+	arg.q_drop = llist_new(150000);	// 150000 = 15000(qps of 100M ethernet) * 10(seconds)
+	if (arg.q_drop==NULL) {
+		fprintf(stderr, "Can't init queue.\n");
+		exit(1);
+	}
+
+	arg.q_send = llist_new(150000); // 150000 = 15000(qps of 100M ethernet) * 10(seconds)
+	if (arg.q_send==NULL) {
+		fprintf(stderr, "Can't init queue.\n");
+		exit(1);
+	}
+
+	err = pthread_create(&snder_send, NULL, thr_snder_send, &arg);
+	if (err) {
+		fprintf(stderr, "pthread_create(): %s\n", strerror(err));
+		exit(1);
+	}
+
+	err = pthread_create(&snder_drop, NULL, thr_snder_drop, &arg);
+	if (err) {
+		fprintf(stderr, "pthread_create(): %s\n", strerror(err));
+		exit(1);
+	}
+
+	err = pthread_create(&snder_delay, NULL, thr_snder_delay, &arg);
+	if (err) {
+		fprintf(stderr, "pthread_create(): %s\n", strerror(err));
+		exit(1);
+	}
+
+	err = pthread_create(&snder_tbf, NULL, thr_snder_tbf, &arg);
+	if (err) {
+		fprintf(stderr, "pthread_create(): %s\n", strerror(err));
+		exit(1);
+	}
+
+	err = pthread_create(&snder_pkt, NULL, thr_snder_pkt, &arg);
+	if (err) {
+		fprintf(stderr, "pthread_create(): %s\n", strerror(err));
+		exit(1);
+	}
+
+	err = pthread_create(&tbf_keeper, NULL, thr_tbf_keeper, &arg);
 	if (err) {
 		fprintf(stderr, "pthread_create(): %s\n", strerror(err));
 		exit(1);
@@ -163,7 +336,6 @@ void relay(int sd, int tunfd, cJSON *conf)
 		exit(1);
 	}
 
-	pthread_join(snder, NULL);
-	pthread_join(rcver, NULL);
+	pthread_join(snder_send, NULL);
 }
 
