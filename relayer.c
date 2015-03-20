@@ -48,11 +48,11 @@ static void *thr_tbf_keeper(void *p)
 		if (token > arg->tbf_burst) {
 			token = arg->tbf_burst;
 		}
-		fprintf(stderr, "%d ms passed, token += %d (= %d).\n", now-time0, arg->tbf_cps*(now-time0)/1000, token);
+		//fprintf(stderr, "%d ms passed, token += %d (= %d).\n", now-time0, arg->tbf_cps*(now-time0)/1000, token);
 		time0 = now;
 		pthread_cond_signal(&cond);
 		pthread_mutex_unlock(&mut);
-		usleep(1000000);
+		usleep(10000);
 	}
 	pthread_exit(NULL);
 }
@@ -173,8 +173,10 @@ static void *thr_snder_delay(void *p)
 	while (1) {
 		llist_fetch_head(arg->q_delay, &buf);
 		now = systimestamp_ms();
-		while (buf->arrive_time + arg->latency < now) {
-			usleep(now - (buf->arrive_time + arg->latency));
+		fprintf(stderr, "thr_snder_delay(): now=%lld, packet(%lld), delay=%lld\n", now, buf->arrive_time, arg->latency);
+		while (buf->arrive_time + arg->latency > now) {
+			fprintf(stderr, "thr_snder_delay(): \tsleep %d ms.\n", (buf->arrive_time + arg->latency)-now);
+			usleep(((buf->arrive_time + arg->latency)-now)*1000);
 			now = systimestamp_ms();
 		}
 		llist_append(arg->q_drop, buf);
@@ -197,7 +199,7 @@ static void *thr_snder_tbf(void *p)
 		}
 		token -= buf->len;
 		pthread_mutex_unlock(&mut);
-		llist_append(arg->q_send, buf);	// DEBUGGING
+		llist_append(arg->q_delay, buf);
 		//fprintf(stderr, "thr_snder_tbf(): %d bytes passed.\n", buf->len);
 	}
 	pthread_exit(NULL);
