@@ -173,9 +173,9 @@ static void *thr_snder_delay(void *p)
 	while (1) {
 		llist_fetch_head(arg->q_delay, &buf);
 		now = systimestamp_ms();
-		fprintf(stderr, "thr_snder_delay(): now=%lld, packet(%lld), delay=%lld\n", now, buf->arrive_time, arg->latency);
+		//fprintf(stderr, "thr_snder_delay(): now=%lld, packet(%lld), delay=%lld\n", now, buf->arrive_time, arg->latency);
 		while (buf->arrive_time + arg->latency > now) {
-			fprintf(stderr, "thr_snder_delay(): \tsleep %d ms.\n", (buf->arrive_time + arg->latency)-now);
+			//fprintf(stderr, "thr_snder_delay(): \tsleep %d ms.\n", (buf->arrive_time + arg->latency)-now);
 			usleep(((buf->arrive_time + arg->latency)-now)*1000);
 			now = systimestamp_ms();
 		}
@@ -270,7 +270,7 @@ void relay(int sd, int tunfd, cJSON *conf)
 	droprate = conf_get_double("DropRate", conf)*1000.0;
 	arg.drop_shift = 3;
 	arg.drop_num = (int)droprate;
-	arg.latency = conf_get_int("Latency", conf);
+	arg.latency = conf_get_int("Delay", conf);
 
 	arg.q_tbf = llist_new(150000);	// 150000 = 15000(qps of 100M ethernet) * 10(seconds)
 	if (arg.q_tbf==NULL) {
