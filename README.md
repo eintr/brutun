@@ -1,20 +1,20 @@
 # net_simulator
-A REALLY simple C program to simulate delay, packet loss and speed limit between 2 Linux boxes. Good for performing internet program testing in LAN.
+一个用于在LAN中的两个Linux系统之间模拟延迟、丢报和限速的简单的C程序。适用于在LAN环境下进行互联网应用程序的测试
 
 ---
 
 ### Features
- * Use UDP between hosts.
- * Create point-to-point tunnel with tun devices.
- * Flow control with TBF(Token Bucket Filter)
- * Let me think...
+ * 主机间使用UDP通信。
+ * 利用tun功能建立点到点隧道。
+ * 流控算法采用TBF(令牌桶过滤器)
+ * 我再想想...
 
 ---
 
 ### Build and install
-Edit Makefile , change the above lines.
+编辑Makefile , 修改前面几行
 
-Then just
+然后
 ```
 make
 make install
@@ -23,27 +23,28 @@ make install
 ---
 
 ### Configure
-Just take a look at example.conf and guess... Yes, it's in json.
+先打开example.conf猜猜看……没错，就是个json。
 
-* "RemoteAddress" and "RemotePort" indicates the peer side socket address. If these 2 entries are ommited, the program will be running in passive mode which means it will use the source address/port of the first packet it receives as the peer side address/port, and it will discard all packets before this.
+* "RemoteAddress" 和 "RemotePort" 定义对端地址与端口。如果省略这两个配置，则程序将工作于被动模式。也就是说程序将使用它第一次收到的数据包的源地址作为对段地址，在此之前程序将会丢弃所要发送的数据。
 
-* "LocalPort" indicates the local socket port, "0.0.0.0" is always used.
+* "LocalPort" 定义套接字的本地bind端口, 本地地址永远是"0.0.0.0"。
 
-* "TunnelLocalAddr" and "TunnelPeerAddr" indicates the IP addresses would be configured to the tun device after it is created. 
-* "DropRate" indicates packet loss probability, value: [0-1]
+* "TunnelLocalAddr" 和 "TunnelPeerAddr" 定义tun隧道建立好之后的地址配置。
 
-* "TBF_Bps" and "TBF_burst" indicates the TBF(Token Bucket Filter) parameter for speed limit. What is TBF? Google it if needed. "TBF_Bps" value is BYTEs per second. "TBF_burst" value is also in BYTEs.
+* "DropRate" 定义丢包概率, 取值: [0-1] 。
 
-* "Delay" indicates the time delay of each packet, value in ms(millisecond). Note: You need erally big RAM if you configred a very big delay in very big Bps. 
+* "TBF_Bps" 和 "TBF_burst" 定义TBF(令牌桶过滤器)的限速参数。什么是TBF? 去Google一下。"TBF_Bps"取值单位是每秒字节数。"TBF_burst"取值单位是字节.
+
+* "Delay" 定义每个数据包的延迟，取值以毫秒(millisecond)为单位。注意：如果你定义的带宽限速速率和延迟都很大的话，你需要有很多内存才行。
 
 
-NOTE: All configures are working while SENDING packets! Receiving packet procedure is not controlled at all! I have told you!
+注意: 所有的配置都仅仅用于发送数据包！接受数据的过程是完全不受控制的！我强调过了！
 
 ---
 
-### Start!
-* Host1 (Passive side)
-configure file:
+### 开始吧！
+* Host1 (被动端)
+配置文件：
 ```json
 {
 	"LocalPort"			:	60000,
@@ -56,16 +57,16 @@ configure file:
 	"Delay"				:	100
 }
 ```
-You type:
+运行：
 ```shell
 wormhole -c your_configure_file
 ```
 
-* Host2 (Active side)
-configure file:
+* Host2 (主动端)
+配置文件:
 ```json
 {
-  "RemoteAddress" : "IP_ADDRESS_OF_PASSIVE_SIDE",
+  "RemoteAddress" : "被动端的IP地址",
   "RemotePort" : 60000,
 	"LocalPort"			:	60000,
 	"TunnelLocalAddr"	:	"172.16.111.2",
@@ -78,17 +79,17 @@ configure file:
 }
 ```
 
-You type:
+运行:
 ```shell
 wormhole -c your_configure_file
 ```
 
-OK, you can type
+OK现在在Host1上运行
 ```
 ping 172.16.111.2
 ```
-at Host1 to check if it's OK.
+看看是不是正常。
 
 ---
 
-Have FUN!
+玩好！
