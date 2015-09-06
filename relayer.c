@@ -29,7 +29,47 @@ struct arg_relay_st {
 
 	int latency;
 	llist_t *q_tbf, *q_delay, *q_drop, *q_send;
+
+	char *config_file;
+	time_t last_check,last_mtime;
 };
+
+#define	CHECK_DELAY	5000
+
+static int check_arg(struct arg_relay_st *arg)
+{
+	time_t now;
+	cJSON *conf;
+	double droprate;
+	struct stat stat_buf;
+
+	now = systimestamp_ms();
+	if((now - arg->last_check) < CHECK_DELAY) {
+		return 1;
+	}
+	if(stat(arg->config_file, &stat_buf) == -1) {
+		return -1;
+	}
+	if(stat_buf.st_mtime == arg->last_mtime) {
+		arg->last_check = now;
+		return 1;
+	}
+	conf = conf_load_file(arg->config_file);
+	if(conf == NULL) {
+		fprintf(stderr, "Load config failed.\n");
+		return -1;
+	}
+	arg->tbf_cps = conf_get_int("TBF_Bps", conf);
+	arg->tbf_burst = conf_get_int("TBF_burst", conf);
+	droprate = conf_get_double("DropRate", conf)*1000.0;
+	arg->drop_shift = 3;
+	arg->drop_num = (int)droprate;
+	arg->latency = conf_get_int("Delay", conf);
+	arg->last_mtime = stat_buf.st_mtime;
+	arg->last_check = now;
+	fprintf(stderr, "Reload config success.\n");
+	return 1;
+}
 
 static int token = 0;
 static pthread_mutex_t mut = PTHREAD_MUTEX_INITIALIZER;
@@ -139,6 +179,7 @@ static void *thr_snder_send(void *p)
 		//fprintf(stderr, "thr_snder_send(): %d bytes sent to socket.\n", ret);
 		free(buf->pkt);
 		free(buf);
+		check_arg(arg);
 	}
 	pthread_exit(NULL);
 }
@@ -249,6 +290,7 @@ void relay(int sd, int tunfd, cJSON *conf)
 	char *remote_ip;
 	double droprate;
 	struct sockaddr_in *peer_addr;
+	struct stat stat_buf;
 
 	remote_ip = conf_get_str("RemoteAddress", conf);
 	if (remote_ip!=NULL) {
@@ -271,6 +313,13 @@ void relay(int sd, int tunfd, cJSON *conf)
 	arg.drop_shift = 3;
 	arg.drop_num = (int)droprate;
 	arg.latency = conf_get_int("Delay", conf);
+	arg.last_check = systimestamp_ms();
+	arg.config_file = conf_get_str("config_file", conf);
+	if(stat(arg.config_file, &stat_buf) != -1) {
+		arg.last_mtime = stat_buf.st_mtime;
+	} else {
+		arg.last_mtime = 0;
+	}
 
 	arg.q_tbf = llist_new(150000);	// 150000 = 15000(qps of 100M ethernet) * 10(seconds)
 	if (arg.q_tbf==NULL) {

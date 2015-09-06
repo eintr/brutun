@@ -128,6 +128,11 @@ main(int argc, char **argv)
 		fprintf(stderr, "Load config failed.\n");
 		exit(1);
 	}
+	cJSON_AddStringToObject(conf, "config_file", config_file);
+	if(getenv("WSOCKET_DELAY") != NULL) {
+		cJSON_DeleteItemFromObject(conf,"Delay");
+		cJSON_AddNumberToObject(conf, "Delay", strtol(getenv("WSOCKET_DELAY"), NULL, 10));
+	}
 
 	tun_local_addr = conf_get_str("TunnelLocalAddr", conf);
 	tun_peer_addr = conf_get_str("TunnelPeerAddr", conf);
