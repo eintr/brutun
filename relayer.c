@@ -45,14 +45,14 @@ static int check_arg(struct arg_relay_st *arg)
 
 	now = systimestamp_ms();
 	if((now - arg->last_check) < CHECK_DELAY) {
-		return 1;
+		return 0;
 	}
 	if(stat(arg->config_file, &stat_buf) == -1) {
 		return -1;
 	}
 	if(stat_buf.st_mtime == arg->last_mtime) {
 		arg->last_check = now;
-		return 1;
+		return 0;
 	}
 	conf = conf_load_file(arg->config_file);
 	if(conf == NULL) {
@@ -68,7 +68,7 @@ static int check_arg(struct arg_relay_st *arg)
 	arg->last_mtime = stat_buf.st_mtime;
 	arg->last_check = now;
 	fprintf(stderr, "Reload config success.\n");
-	return 1;
+	return 0;
 }
 
 static int token = 0;
