@@ -21,9 +21,9 @@
 #include <linux/if.h>
 #include <linux/if_tun.h>
 
+#include "json_conf.h"
 #include "protocol.h"
 #include "relayer.h"
-#include "json_conf.h"
 
 static char *config_file;
 
@@ -119,7 +119,7 @@ main(int argc, char **argv)
 	struct sockaddr_in local_addr;
 	char cmdline[BUFSIZE];
 	cJSON *conf;
-	char *tun_local_addr, *tun_peer_addr;
+	const char *tun_local_addr, *tun_peer_addr;
 
 	parse_args(argc, argv);
 
@@ -129,13 +129,9 @@ main(int argc, char **argv)
 		exit(1);
 	}
 	cJSON_AddStringToObject(conf, "config_file", config_file);
-	if(getenv("WSOCKET_DELAY") != NULL) {
-		cJSON_DeleteItemFromObject(conf,"Delay");
-		cJSON_AddNumberToObject(conf, "Delay", strtol(getenv("WSOCKET_DELAY"), NULL, 10));
-	}
 
-	tun_local_addr = conf_get_str("TunnelLocalAddr", conf);
-	tun_peer_addr = conf_get_str("TunnelPeerAddr", conf);
+	tun_local_addr = conf_get_str("TunnelLocalAddr", NULL, conf);
+	tun_peer_addr = conf_get_str("TunnelPeerAddr", NULL, conf);
 	if (tun_local_addr==NULL || tun_peer_addr==NULL) {
 		fprintf(stderr, "Must define TunnelLocalAddr and TunnelPeerAddr in config file!\n");
 		exit(1);
@@ -149,7 +145,7 @@ main(int argc, char **argv)
 
 	local_addr.sin_family = PF_INET;
 	local_addr.sin_addr.s_addr = 0;
-	local_addr.sin_port = htons(conf_get_int("LocalPort", conf));
+	local_addr.sin_port = htons(conf_get_int("LocalPort", 60001, conf));
 	if (bind(sd, (void*)&local_addr, sizeof(local_addr))<0) {
 		perror("bind()");
 		exit(1);

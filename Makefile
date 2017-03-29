@@ -1,10 +1,10 @@
-CFLAGS+=-I -pthread -Wall -g -D_GNU_SOURCE -O0
+CFLAGS+= -I. -pthread -Wall -g -D_GNU_SOURCE -O0
 
-LDFLAGS+=-lpthread -lm -lssl -lcrypto -lrt 
+LDFLAGS+=-lpthread -lm -lssl -lcrypto -lrt
 
 SERVERFNAME=warmhole
 
-sources=main.c relayer.c json_conf.c cJSON.c myrand.c ds_llist.c util_time.c
+sources=main.c relayer.c myrand.c util_time.c json_conf.c cJSON.c
 
 objects=$(sources:.c=.o)
 
