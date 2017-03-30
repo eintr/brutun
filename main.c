@@ -123,6 +123,8 @@ main(int argc, char **argv)
 
 	parse_args(argc, argv);
 
+	srand(getpid());
+
 	conf = conf_load_file(config_file);
 	if (conf==NULL) {
 		fprintf(stderr, "Load config failed.\n");
