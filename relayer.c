@@ -83,7 +83,7 @@ static void *thr_down(void *p)
 		memcpy(&peer_addr, &from_addr, sizeof(struct sockaddr_in));
 		peer_addr_len = from_addr_len;
 
-		data_len = ntohl(ubuf.pkt.len);
+		data_len = ntohs(ubuf.pkt.len);
 
 		if (ntohu64(ubuf.pkt.serial)==serial_prev) {
 			// Drop redundent packets.
@@ -108,7 +108,7 @@ static void *thr_down(void *p)
 			}
 			break;
 		}
-		//fprintf(stderr, "tunfd: relayed %d bytes.\n", ret);
+		fprintf(stderr, "tunfd: relayed %d bytes.\n", ret);
 	}
 quit:
 	pthread_exit(NULL);
@@ -164,6 +164,7 @@ void relay(int sd, int tunfd, cJSON *conf)
 	magic_word = (void*)conf_get_str("MagicWord", "Brutun1", conf);
 	memset(magic, 0, 8);
 	strncpy(magic, magic_word, 8);
+	fprintf(stderr, "Magic=%s\n", magic);
 	
 	remote_ip = (void*)conf_get_str("RemoteAddress", NULL, conf);
 	remote_port = conf_get_int("RemotePort", 60001, conf);
