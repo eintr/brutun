@@ -43,7 +43,7 @@ static void parse_args(int argc, char **argv)
 	} while (c!=-1);
 
 	if (config_file==NULL) {
-		fprintf(stderr, "Usage:!!\n");
+		fprintf(stderr, "Usage: %s -c CONFIG_FILE\n", argv[0]);
 		abort();
 	}
 }
@@ -99,12 +99,12 @@ static int shell(const char *cmd)
 {
 	int ret;
 
-	printf("run: %s  ...  ", cmd);
+	fprintf(stderr, "run: %s  ...  ", cmd);
 	ret = system(cmd);
 	if (ret==-1) {
-		printf("failed: %m.\n");
+		fprintf(stderr, "failed: %m.\n");
 	} else {
-		printf("status=%d.\n", ret);
+		fprintf(stderr, "status=%d.\n", ret);
 	}
 	return ret;
 }

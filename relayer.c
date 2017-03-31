@@ -37,7 +37,7 @@ struct pkt_st {
 
 #define	htonu64(X)	ntohu64(X)
 
-static uint8_t magic[8];
+static char magic[8];
 static pthread_t tid_up, tid_down;
 static struct sockaddr_in peer_addr;
 static socklen_t peer_addr_len = 0;
@@ -76,7 +76,7 @@ static void *thr_down(void *p)
 		}
 
 		if (memcmp(ubuf.pkt.magic, magic, 8)!=0) {
-			fprintf(stderr, "Ignored unknown source packet\n");
+			//fprintf(stderr, "Ignored unknown source packet\n");
 			continue;
 		}
 
@@ -86,12 +86,11 @@ static void *thr_down(void *p)
 		data_len = ntohs(ubuf.pkt.len);
 
 		if (ntohu64(ubuf.pkt.serial)==serial_prev) {
-			// Drop redundent packets.
-			fprintf(stderr, "Drop redundent packet %llu\n", (long long unsigned)ntohu64(ubuf.pkt.serial));
+			// fprintf(stderr, "Drop redundent packet %llu\n", (long long unsigned)ntohu64(ubuf.pkt.serial));
 			continue;
 		}
 
-		fprintf(stderr, "Accepted packet %llu\n", (long long unsigned)ntohu64(ubuf.pkt.serial));
+		//fprintf(stderr, "Accepted packet %llu\n", (long long unsigned)ntohu64(ubuf.pkt.serial));
 		serial_prev = ntohu64(ubuf.pkt.serial);
 
 		while (1) {
@@ -108,7 +107,7 @@ static void *thr_down(void *p)
 			}
 			break;
 		}
-		fprintf(stderr, "tunfd: relayed %d bytes.\n", ret);
+		//fprintf(stderr, "tunfd: relayed %d bytes.\n", ret);
 	}
 quit:
 	pthread_exit(NULL);
@@ -147,7 +146,7 @@ static void *thr_up(void *p)
 				}
 				fprintf(stderr, "sendto(sd): %m, drop\n");
 			}
-			fprintf(stderr, "sent(serial %llu)\n", serial);
+			//fprintf(stderr, "sent(serial %llu)\n", serial);
 		}
 		serial++;
 	}
@@ -173,14 +172,15 @@ void relay(int sd, int tunfd, cJSON *conf)
 		inet_pton(PF_INET, remote_ip, &peer_addr.sin_addr);
 		peer_addr.sin_port = htons(remote_port);
 		peer_addr_len = sizeof(peer_addr);
-		printf("RemoteAddress =%s, RemotePort=%d\n", remote_ip, remote_port);
+		fprintf(stderr, "RemoteAddress =%s, RemotePort=%d\n", remote_ip, remote_port);
 	} else {
-		printf("No RemoteAddress specified, running in passive mode.\n");
+		fprintf(stderr, "No RemoteAddress specified, running in passive mode.\n");
 	}
 
 	arg.sockets[0] = sd;
 	arg.tun = tunfd;
 	arg.dup_level = conf_get_int("DupLevel", DEFAULT_DUP_LEVEL, conf);
+	fprintf(stderr, "DupLevel=%d\n", arg.dup_level);
 
 	err = pthread_create(&tid_up, NULL, thr_up, &arg);
 	if (err) {
