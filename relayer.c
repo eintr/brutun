@@ -16,7 +16,6 @@
 #include <json_conf.h>
 
 #include "protocol.h"
-#include "myrand.h"
 #include "util_time.h"
 
 #define	BUFSIZE	(65536+4096)
