@@ -166,13 +166,13 @@ main(int argc, char **argv)
 	shell(cmdline);
 
 	routes = conf_get("RoutePrefix", NULL, conf);
-	if (routes && routes.type==cJSON_Array) {
+	if (routes && routes->type==cJSON_Array) {
 		int i;
 		for (i=0; i<cJSON_GetArraySize(routes); ++i) {
 			cJSON *entry;
 			entry = cJSON_GetArrayItem(routes, i);
-			if (entry.type == cJSON_String) {
-				snprintf(cmdline, BUFSIZE, "ip route add %s dev %s via %s", entry.valuestring, tun_name, tun_peer_addr);
+			if (entry->type == cJSON_String) {
+				snprintf(cmdline, BUFSIZE, "ip route add %s dev %s via %s", entry->valuestring, tun_name, tun_peer_addr);
 				shell(cmdline);
 			}
 		}
