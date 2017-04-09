@@ -118,7 +118,7 @@ main(int argc, char **argv)
 	char tun_name[IFNAMSIZ];
 	struct sockaddr_in local_addr;
 	char cmdline[BUFSIZE];
-	cJSON *conf;
+	cJSON *conf, *routes;
 	const char *tun_local_addr, *tun_peer_addr;
 
 	parse_args(argc, argv);
@@ -164,6 +164,19 @@ main(int argc, char **argv)
 	shell(cmdline);
 	snprintf(cmdline, BUFSIZE, "ip link set dev %s up", tun_name);
 	shell(cmdline);
+
+	routes = conf_get("RoutePrefix", NULL, conf);
+	if (routes && routes.type==cJSON_Array) {
+		int i;
+		for (i=0; i<cJSON_GetArraySize(routes); ++i) {
+			cJSON *entry;
+			entry = cJSON_GetArrayItem(routes, i);
+			if (entry.type == cJSON_String) {
+				snprintf(cmdline, BUFSIZE, "ip route add %s dev %s via %s", entry.valuestring, tun_name, tun_peer_addr);
+				shell(cmdline);
+			}
+		}
+	}
 
 	relay(sd, tun_fd, conf);
 
