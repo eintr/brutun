@@ -207,10 +207,12 @@ static void open_udp_sockets(int **sdarr, int *sdarr_sz, cJSON *conf)
 		*sdarr_sz = 1;
 		*sdarr = malloc(sizeof(int));
 		*sdarr[0] = open_udp_socket(60001);
+		fprintf(stderr, "Opened default UDP port: 60001\n");
 	} else if (port_conf->type==cJSON_Number) {
 		*sdarr_sz = 1;
 		*sdarr = malloc(sizeof(int));
 		*sdarr[0] = open_udp_socket(port_conf->valueint);
+		fprintf(stderr, "Opened single UDP port: %d\n", port_conf->valueint);
 	} else if (port_conf->type==cJSON_Array) {
 		int i;
 		*sdarr_sz = cJSON_GetArraySize(port_conf);
@@ -223,6 +225,7 @@ static void open_udp_sockets(int **sdarr, int *sdarr_sz, cJSON *conf)
 				abort();
 			}
 			(*sdarr)[i] = open_udp_socket(jport->valueint);
+			fprintf(stderr, "Opened UDP port: %d\n", jport->valueint);
 		}
 	} else {
 		fprintf(stderr, "Illegal LocalPort!\n");
