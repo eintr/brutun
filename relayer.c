@@ -99,7 +99,8 @@ static void *thr_udp2tun(void *p)
 					continue;
 				}
 
-				memcpy(&peer_addr, &from_addr, sizeof(struct sockaddr_in));
+				peer_addr.sin_addr.s_addr = from_addr.sin_addr.s_addr;
+				peer_addr.sin_port = from_addr.sin_port;
 				peer_addr_len = from_addr_len;
 
 				data_len = ntohs(ubuf.pkt.len);
@@ -144,6 +145,7 @@ static void *thr_tun2udp(void *p)
 	int len, i;
 	uint64_t serial = rand();
 	ssize_t ret;
+	int next_udp=0;
 
 	memcpy(ubuf.pkt.magic, magic, 8);
 	while(1) {
@@ -160,7 +162,7 @@ static void *thr_tun2udp(void *p)
 		ubuf.pkt.serial = htonu64(serial);
 
 		for (i=0; i<arg->dup_level; ++i) {
-			ret = sendto(arg->sockets[0], ubuf.buffer, sizeof(ubuf.pkt)+len, 0, (void*)&peer_addr, peer_addr_len);
+			ret = sendto(arg->sockets[next_udp], ubuf.buffer, sizeof(ubuf.pkt)+len, 0, (void*)&peer_addr, peer_addr_len);
 			if (ret<0) {
 				if (errno==EINTR) {
 					continue;
@@ -170,6 +172,7 @@ static void *thr_tun2udp(void *p)
 			//fprintf(stderr, "sent(serial %llu)\n", serial);
 		}
 		serial++;
+		next_udp = (next_udp+1)%arg->nr_sockets;
 	}
 	pthread_exit(NULL);
 }
