@@ -170,9 +170,9 @@ static void *thr_tun2udp(void *p)
 				fprintf(stderr, "sendto(sd): %m, drop\n");
 			}
 			//fprintf(stderr, "sent(serial %llu)\n", serial);
+			next_udp = (next_udp+1)%arg->nr_sockets;
 		}
 		serial++;
-		next_udp = (next_udp+1)%arg->nr_sockets;
 	}
 	pthread_exit(NULL);
 }
