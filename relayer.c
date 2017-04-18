@@ -222,7 +222,7 @@ static void open_udp_sockets(int **sdarr, int *sdarr_sz, cJSON *conf)
 				fprintf(stderr, "Illegal LocalPort[%d]!\n", i);
 				abort();
 			}
-			*sdarr[i] = open_udp_socket(jport->valueint);
+			(*sdarr)[i] = open_udp_socket(jport->valueint);
 		}
 	} else {
 		fprintf(stderr, "Illegal LocalPort!\n");
