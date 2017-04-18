@@ -9,6 +9,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
+#include <sys/poll.h>
 #include <errno.h>
 #include <pthread.h>
 #include <arpa/inet.h>
@@ -21,14 +22,20 @@
 #define	BUFSIZE	(65536+4096)
 #define	DEFAULT_DUP_LEVEL	3
 
+#define	CODE_DATA	0
+#define	CODE_PING	1
+#define	CODE_PONG	1
+
 struct arg_relay_st {
-	int tun, sockets[1];
+	int tun;
+	int *sockets;
 	int nr_sockets;
 	int dup_level;
 };
 
 struct pkt_st {
 	uint8_t magic[8];
+	uint8_t code;
 	uint64_t serial;
 	uint16_t len;
 	uint8_t data[];
@@ -59,54 +66,69 @@ static void *thr_udp2tun(void *p)
 	struct arg_relay_st *arg=p;
 	struct sockaddr_in from_addr;
 	socklen_t from_addr_len;
-	int len, ret;
+	int len, ret, i;
 	union {
 		char buffer[BUFSIZE];
 		struct pkt_st pkt;
 	} ubuf;
 	uint64_t serial_prev = 0;
 	uint32_t data_len;
+	struct pollfd *pfd;
+
+	pfd = alloca(sizeof(struct pollfd)*arg->nr_sockets);
+	for (i=0; i<arg->nr_sockets; ++i) {
+		pfd[i].fd = arg->sockets[i];
+		pfd[i].events = POLLIN;
+	}
 
 	from_addr_len = sizeof(from_addr);
 	while(1) {
-		len = recvfrom(arg->sockets[0], &ubuf, sizeof(ubuf), 0, (void*)&from_addr, &from_addr_len);
-		if (len==0) {
-			continue;
+		while (poll(pfd, arg->nr_sockets, -1)<=0) {
+			perror("poll()");
 		}
+		for (i=0; i<arg->nr_sockets; ++i) {
+			if (pfd[i].revents&POLLIN) {
 
-		if (memcmp(ubuf.pkt.magic, magic, 8)!=0) {
-			//fprintf(stderr, "Ignored unknown source packet\n");
-			continue;
-		}
-
-		memcpy(&peer_addr, &from_addr, sizeof(struct sockaddr_in));
-		peer_addr_len = from_addr_len;
-
-		data_len = ntohs(ubuf.pkt.len);
-
-		if (ntohu64(ubuf.pkt.serial)==serial_prev) {
-			// fprintf(stderr, "Drop redundent packet %llu\n", (long long unsigned)ntohu64(ubuf.pkt.serial));
-			continue;
-		}
-
-		//fprintf(stderr, "Accepted packet %llu\n", (long long unsigned)ntohu64(ubuf.pkt.serial));
-		serial_prev = ntohu64(ubuf.pkt.serial);
-
-		while (1) {
-			ret = write(arg->tun, ubuf.pkt.data, data_len);
-			if (ret<0) {
-				if (errno==EINTR) {
+				len = recvfrom(arg->sockets[0], &ubuf, sizeof(ubuf), 0, (void*)&from_addr, &from_addr_len);
+				if (len==0) {
 					continue;
 				}
-				//fprintf(stderr, "write(tunfd): %m\n");
-				goto quit;
+
+				if (memcmp(ubuf.pkt.magic, magic, 8)!=0) {
+					//fprintf(stderr, "Ignored unknown source packet\n");
+					continue;
+				}
+
+				memcpy(&peer_addr, &from_addr, sizeof(struct sockaddr_in));
+				peer_addr_len = from_addr_len;
+
+				data_len = ntohs(ubuf.pkt.len);
+
+				if (ntohu64(ubuf.pkt.serial)==serial_prev) {
+					// fprintf(stderr, "Drop redundent packet %llu\n", (long long unsigned)ntohu64(ubuf.pkt.serial));
+					continue;
+				}
+
+				//fprintf(stderr, "Accepted packet %llu\n", (long long unsigned)ntohu64(ubuf.pkt.serial));
+				serial_prev = ntohu64(ubuf.pkt.serial);
+
+				while (1) {
+					ret = write(arg->tun, ubuf.pkt.data, data_len);
+					if (ret<0) {
+						if (errno==EINTR) {
+							continue;
+						}
+						//fprintf(stderr, "write(tunfd): %m\n");
+						goto quit;
+					}
+					if (ret==0) {
+						goto quit;
+					}
+					break;
+				}
+				//fprintf(stderr, "tunfd: relayed %d bytes.\n", ret);
 			}
-			if (ret==0) {
-				goto quit;
-			}
-			break;
 		}
-		//fprintf(stderr, "tunfd: relayed %d bytes.\n", ret);
 	}
 quit:
 	pthread_exit(NULL);
@@ -152,7 +174,60 @@ static void *thr_tun2udp(void *p)
 	pthread_exit(NULL);
 }
 
-void relay(int sd, int tunfd, cJSON *conf)
+static int open_udp_socket(int port)
+{
+	int sd;
+	struct sockaddr_in local_addr;
+
+	sd = socket(PF_INET, SOCK_DGRAM, 0);
+	if (sd<0) {
+		perror("socket()");
+		abort();
+	}
+
+	local_addr.sin_family = PF_INET;
+	local_addr.sin_addr.s_addr = 0;
+	local_addr.sin_port = htons(port);
+	if (bind(sd, (void*)&local_addr, sizeof(local_addr))<0) {
+		fprintf(stderr, "bind(%d): %m", port);
+		abort();
+	}
+	return sd;
+}
+
+static void open_udp_sockets(int **sdarr, int *sdarr_sz, cJSON *conf)
+{
+	cJSON *port_conf;
+
+	port_conf = conf_get("LocalPort", NULL, conf);
+	if (port_conf==NULL) {
+		*sdarr_sz = 1;
+		*sdarr = malloc(sizeof(int));
+		*sdarr[0] = open_udp_socket(60001);
+	} else if (port_conf->type==cJSON_Number) {
+		*sdarr_sz = 1;
+		*sdarr = malloc(sizeof(int));
+		*sdarr[0] = open_udp_socket(port_conf->valueint);
+	} else if (port_conf->type==cJSON_Array) {
+		int i;
+		*sdarr_sz = cJSON_GetArraySize(port_conf);
+		*sdarr = malloc(sizeof(int)*(*sdarr_sz));
+		for (i=0; i<cJSON_GetArraySize(port_conf); ++i) {
+			cJSON *jport;
+			jport = cJSON_GetArrayItem(port_conf, i);
+			if (jport->type!=cJSON_Number) {
+				fprintf(stderr, "Illegal LocalPort[%d]!\n", i);
+				abort();
+			}
+			*sdarr[i] = open_udp_socket(jport->valueint);
+		}
+	} else {
+		fprintf(stderr, "Illegal LocalPort!\n");
+		abort();
+	}
+}
+
+void relay(int tunfd, cJSON *conf)
 {
 	struct arg_relay_st arg;
 	int err, remote_port;
@@ -176,7 +251,8 @@ void relay(int sd, int tunfd, cJSON *conf)
 		fprintf(stderr, "No RemoteAddress specified, running in passive mode.\n");
 	}
 
-	arg.sockets[0] = sd;
+	open_udp_sockets(&arg.sockets, &arg.nr_sockets, conf);
+
 	arg.tun = tunfd;
 	arg.dup_level = conf_get_int("DupLevel", DEFAULT_DUP_LEVEL, conf);
 	fprintf(stderr, "DupLevel=%d\n", arg.dup_level);

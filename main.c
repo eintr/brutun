@@ -114,9 +114,8 @@ static int shell(const char *cmd)
 int
 main(int argc, char **argv)
 {
-	int sd, tun_fd;
+	int tun_fd;
 	char tun_name[IFNAMSIZ];
-	struct sockaddr_in local_addr;
 	char cmdline[BUFSIZE];
 	cJSON *conf, *routes;
 	const char *tun_local_addr, *tun_peer_addr;
@@ -136,20 +135,6 @@ main(int argc, char **argv)
 	tun_peer_addr = conf_get_str("TunnelPeerAddr", NULL, conf);
 	if (tun_local_addr==NULL || tun_peer_addr==NULL) {
 		fprintf(stderr, "Must define TunnelLocalAddr and TunnelPeerAddr in config file!\n");
-		exit(1);
-	}
-
-	sd = socket(PF_INET, SOCK_DGRAM, 0);
-	if (sd<0) {
-		perror("socket()");
-		exit(1);
-	}
-
-	local_addr.sin_family = PF_INET;
-	local_addr.sin_addr.s_addr = 0;
-	local_addr.sin_port = htons(conf_get_int("LocalPort", 60001, conf));
-	if (bind(sd, (void*)&local_addr, sizeof(local_addr))<0) {
-		perror("bind()");
 		exit(1);
 	}
 
@@ -178,9 +163,8 @@ main(int argc, char **argv)
 		}
 	}
 
-	relay(sd, tun_fd, conf);
+	relay(tun_fd, conf);
 
-	close(sd);
 	close(tun_fd);
 
 	return 0;

@@ -3,7 +3,7 @@
 
 #include "cJSON.h"
 
-void relay(int sd, int tunfd, cJSON *conf);
+void relay(int tunfd, cJSON *conf);
 
 #endif
 
