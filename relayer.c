@@ -32,7 +32,7 @@ struct pkt_st {
 	uint64_t serial;
 	uint16_t len;
 	uint8_t data[];
-};
+}__attribute__((packed));
 
 #define	htonu64(X)	ntohu64(X)
 
