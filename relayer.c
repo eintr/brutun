@@ -37,7 +37,7 @@ struct pkt_st {
 #define	htonu64(X)	ntohu64(X)
 
 static char magic[8];
-static pthread_t tid_up, tid_down;
+static pthread_t tid_udp2tun, tid_tun2udp;
 static struct sockaddr_in peer_addr;
 static socklen_t peer_addr_len = 0;
 
@@ -54,7 +54,7 @@ static uint64_t ntohu64(uint64_t input)
 	return b.u64;
 }
 
-static void *thr_down(void *p)
+static void *thr_udp2tun(void *p)
 {
 	struct arg_relay_st *arg=p;
 	struct sockaddr_in from_addr;
@@ -112,7 +112,7 @@ quit:
 	pthread_exit(NULL);
 }
 
-static void *thr_up(void *p)
+static void *thr_tun2udp(void *p)
 {
 	struct arg_relay_st *arg=p;
 	union {
@@ -181,19 +181,19 @@ void relay(int sd, int tunfd, cJSON *conf)
 	arg.dup_level = conf_get_int("DupLevel", DEFAULT_DUP_LEVEL, conf);
 	fprintf(stderr, "DupLevel=%d\n", arg.dup_level);
 
-	err = pthread_create(&tid_up, NULL, thr_up, &arg);
+	err = pthread_create(&tid_udp2tun, NULL, thr_udp2tun, &arg);
 	if (err) {
 		fprintf(stderr, "pthread_create(): %s\n", strerror(err));
 		exit(1);
 	}
 
-	err = pthread_create(&tid_down, NULL, thr_down, &arg);
+	err = pthread_create(&tid_tun2udp, NULL, thr_tun2udp, &arg);
 	if (err) {
 		fprintf(stderr, "pthread_create(): %s\n", strerror(err));
 		exit(1);
 	}
 
-	pthread_join(tid_up, NULL);
-	pthread_join(tid_down, NULL);
+	pthread_join(tid_tun2udp, NULL);
+	pthread_join(tid_udp2tun, NULL);
 }
 
