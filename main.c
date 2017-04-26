@@ -118,7 +118,7 @@ main(int argc, char **argv)
 	char tun_name[IFNAMSIZ];
 	char cmdline[BUFSIZE];
 	cJSON *conf, *routes;
-	const char *tun_local_addr, *tun_peer_addr;
+	const char *tun_local_addr, *tun_peer_addr, *default_route;
 
 	parse_args(argc, argv);
 
@@ -161,6 +161,12 @@ main(int argc, char **argv)
 				shell(cmdline);
 			}
 		}
+	}
+
+	default_route = conf_get_str("DefaultRoute", NULL, conf);
+	if (default_route!=NULL) {
+		snprintf(cmdline, BUFSIZE, "ip route add default dev %s table %s", tun_name, default_route);
+		shell(cmdline);
 	}
 
 	relay(tun_fd, conf);
