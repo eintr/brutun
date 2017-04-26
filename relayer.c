@@ -18,6 +18,7 @@
 
 #include "protocol.h"
 #include "util_time.h"
+#include "cryp.h"
 
 #define	BUFSIZE	(65536+4096)
 #define	DEFAULT_DUP_LEVEL	3
@@ -43,7 +44,7 @@ struct pkt_st {
 
 #define	htonu64(X)	ntohu64(X)
 
-static char magic[8];
+static uint8_t magic[8];
 static pthread_t tid_udp2tun, tid_tun2udp;
 static struct sockaddr_in peer_addr;
 static socklen_t peer_addr_len = 0;
@@ -113,6 +114,8 @@ static void *thr_udp2tun(void *p)
 				//fprintf(stderr, "Accepted packet %llu\n", (long long unsigned)ntohu64(ubuf.pkt.serial));
 				serial_prev = ntohu64(ubuf.pkt.serial);
 
+				dec(ubuf.pkt.data, data_len, magic);
+
 				while (1) {
 					ret = write(arg->tun, ubuf.pkt.data, data_len);
 					if (ret<0) {
@@ -160,6 +163,8 @@ static void *thr_tun2udp(void *p)
 
 		ubuf.pkt.len = htons(len);
 		ubuf.pkt.serial = htonu64(serial);
+
+		enc(ubuf.pkt.data, len, magic);
 
 		for (i=0; i<arg->dup_level; ++i) {
 			ret = sendto(arg->sockets[next_udp], ubuf.buffer, sizeof(ubuf.pkt)+len, 0, (void*)&peer_addr, peer_addr_len);
@@ -242,7 +247,7 @@ void relay(int tunfd, cJSON *conf)
 
 	magic_word = (void*)conf_get_str("MagicWord", "Brutun1", conf);
 	memset(magic, 0, 8);
-	strncpy(magic, magic_word, 8);
+	strncpy((void*)magic, magic_word, 8);
 	fprintf(stderr, "Magic=%s\n", magic);
 	
 	remote_ip = (void*)conf_get_str("RemoteAddress", NULL, conf);
