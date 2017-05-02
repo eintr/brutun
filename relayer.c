@@ -20,6 +20,8 @@
 #include "util_time.h"
 #include "cryp.h"
 
+extern int hup_notified;
+
 #define	BUFSIZE	(65536+4096)
 #define	DEFAULT_DUP_LEVEL	3
 
@@ -145,10 +147,9 @@ static void *thr_tun2udp(void *p)
 		char buffer[BUFSIZE];
 		struct pkt_st pkt;
 	} ubuf;
-	int len, i;
+	int len, i, socket_id=0;
 	uint64_t serial = rand();
 	ssize_t ret;
-	int next_udp=0;
 
 	memcpy(ubuf.pkt.magic, magic, 8);
 	while(1) {
@@ -167,7 +168,7 @@ static void *thr_tun2udp(void *p)
 		enc(ubuf.pkt.data, len, magic);
 
 		for (i=0; i<arg->dup_level; ++i) {
-			ret = sendto(arg->sockets[next_udp], ubuf.buffer, sizeof(ubuf.pkt)+len, 0, (void*)&peer_addr, peer_addr_len);
+			ret = sendto(arg->sockets[socket_id], ubuf.buffer, sizeof(ubuf.pkt)+len, 0, (void*)&peer_addr, peer_addr_len);
 			if (ret<0) {
 				if (errno==EINTR) {
 					continue;
@@ -175,9 +176,13 @@ static void *thr_tun2udp(void *p)
 				fprintf(stderr, "sendto(sd): %m, drop\n");
 			}
 			//fprintf(stderr, "sent(serial %llu)\n", serial);
-			next_udp = (next_udp+1)%arg->nr_sockets;
 		}
 		serial++;
+		if (hup_notified) {
+			hup_notified = 0;
+			socket_id = (socket_id+1)%arg->nr_sockets;
+			fprintf(stderr, "Source port changed\n");
+		}
 	}
 	pthread_exit(NULL);
 }

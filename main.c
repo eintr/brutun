@@ -15,6 +15,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <errno.h>
+#include <signal.h>
 #include <arpa/inet.h>
 #include <sys/types.h>
 
@@ -24,6 +25,8 @@
 #include "json_conf.h"
 #include "protocol.h"
 #include "relayer.h"
+
+int hup_notified=0;
 
 static char *config_file;
 
@@ -109,6 +112,11 @@ static int shell(const char *cmd)
 	return ret;
 }
 
+static void hup_handler(int s)
+{
+	hup_notified = 1;
+}
+
 #define	BUFSIZE	1024
 
 int
@@ -130,6 +138,8 @@ main(int argc, char **argv)
 		exit(1);
 	}
 	cJSON_AddStringToObject(conf, "config_file", config_file);
+
+	signal(SIGHUP, hup_handler);
 
 	tun_local_addr = conf_get_str("TunnelLocalAddr", NULL, conf);
 	tun_peer_addr = conf_get_str("TunnelPeerAddr", NULL, conf);
