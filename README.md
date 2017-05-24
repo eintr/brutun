@@ -25,6 +25,16 @@ make install
 
 ---
 
+### 命令行参数
+只有一个：-c 配置文件
+
+是的，没有daemon运行的选项，因为那根本就没必要。
+
+* 如果你需要以daemon方式运行，总要解决异常退出的重启对不对？所以你总要套在一个supervisor下面跑，而任何supervisor都能以daemon方式运行。
+* 如果你不需要引入supervisor，只能说明你的服务可用性其实并不重要，利用一下 setsid(1) 也就够了。
+
+---
+
 ### Configure
 先打开example.conf猜猜看……没错，就是个json。
 
