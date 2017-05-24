@@ -31,6 +31,7 @@ extern int hup_notified;
 
 struct arg_relay_st {
 	int tun;
+	int *ports;
 	int *sockets;
 	int nr_sockets;
 	int dup_level;
@@ -92,7 +93,7 @@ static void *thr_udp2tun(void *p)
 		for (i=0; i<arg->nr_sockets; ++i) {
 			if (pfd[i].revents&POLLIN) {
 
-				len = recvfrom(arg->sockets[0], &ubuf, sizeof(ubuf), 0, (void*)&from_addr, &from_addr_len);
+				len = recvfrom(arg->sockets[i], &ubuf, sizeof(ubuf), 0, (void*)&from_addr, &from_addr_len);
 				if (len==0) {
 					continue;
 				}
