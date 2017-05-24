@@ -14,7 +14,7 @@ $(SERVERFNAME): $(objects)
 	    $(CC) -o $@ $^ $(LDFLAGS)
 
 install: all
-	    $(INSTALL) $(SERVERFNAME) /usr/local/sbin/
+	    install $(SERVERFNAME) /usr/local/sbin/
 
 clean:
 	    rm -f $(objects) $(SERVERFNAME)
