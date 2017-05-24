@@ -34,19 +34,25 @@ make install
 
 * "TunnelLocalAddr" 和 "TunnelPeerAddr" 定义tun隧道建立好之后的地址配置。
 
-* "DupLevel" 定义荣誉发送级别，越大抵抗丢包能力越强。
+* "DupLevel" 定义冗余发送级别，越大抵抗丢包能力越强。
+
+* "MagicWord" 验证字段。双端的配置必须一致。所有收到的 MagicWord 不匹配的包，将会被无声丢弃。
+
+* "DefaultRoute" 指定一个路由表，隧道建立成功后，自动成为该路由表的默认路由。（如有疑惑，请学习一下Linux的iproute2机制）
+
+* "RoutePrefix" 隧道建立成功后，接管列表中所有地址前缀的路由。当前版本的程序并没有检查路由冲突导致的操作失败，需要人工审查。
+
 
 ---
 
 ### 开始吧！
 * Host1 (被动端)
-配置文件：
+最简配置文件：
 ```json
 {
 	"LocalPort"			:	[60000],
 	"TunnelLocalAddr"	:	"172.16.111.1",
 	"TunnelPeerAddr"	:	"172.16.111.2",
-
 	"DupLevel"			:	2
 }
 ```
@@ -56,7 +62,7 @@ brutun -c your_configure_file
 ```
 
 * Host2 (主动端)
-配置文件:
+最简配置文件:
 ```json
 {
   "RemoteAddress" : "被动端的IP地址",
@@ -64,7 +70,6 @@ brutun -c your_configure_file
 	"LocalPort"			:	[60000],
 	"TunnelLocalAddr"	:	"172.16.111.2",
 	"TunnelPeerAddr"	:	"172.16.111.1",
-
 	"DupLevel"			:	3
 }
 ```
@@ -79,24 +84,6 @@ OK现在在Host1上运行
 ping 172.16.111.2
 ```
 看看是不是正常。
-
----
-
-其他配置项：
-
-~~~~
-"RoutePrefix" : [
-  "10.0.0.0/16"
-]
-~~~~
-隧道建立成功后，接管列表中地址前缀的路由。
-
-
-
-~~~~
-"DefaultRoute" : "table名"
-~~~~
-隧道建立成功后，自动成为该table的默认路由。
 
 ---
 
