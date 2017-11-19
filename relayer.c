@@ -188,12 +188,12 @@ static void *thr_tun2udp(void *p)
 	pthread_exit(NULL);
 }
 
-static int open_udp_socket(int port)
+static int open_socket(int port)
 {
 	int sd;
 	struct sockaddr_in local_addr;
 
-	sd = socket(PF_INET, SOCK_DGRAM, 0);
+	sd = socket(PF_INET, SOCK_RAW, IPPROTO_ICMP);
 	if (sd<0) {
 		perror("socket()");
 		abort();
