@@ -19,6 +19,7 @@
 #include "protocol.h"
 #include "util_time.h"
 #include "cryp.h"
+#include "ping4_socket.h"
 
 extern int hup_notified;
 
@@ -31,7 +32,7 @@ extern int hup_notified;
 
 struct relayer_st {
 	int fd_tun;
-	int fd_socket;
+	ping4_sock_t *net_socket;
 	int dup_level;
 
 	int terminate;
@@ -80,7 +81,7 @@ static void *thr_net2tun(void *p)
 
 	from_addr_len = sizeof(from_addr);
 	while(!arg->terminate) {
-		len = recvfrom(arg->fd_socket, &ubuf, sizeof(ubuf), 0, (void*)&from_addr, &from_addr_len);
+		len = ping4_recv(arg->net_socket, &ubuf, sizeof(ubuf), 0);
 		if (len==0) {
 			continue;
 		}
@@ -154,7 +155,7 @@ static void *thr_tun2net(void *p)
 		enc(ubuf.pkt.data, len, arg->magic);
 
 		for (i=0; i<arg->dup_level; ++i) {
-			ret = sendto(arg->fd_socket, ubuf.buffer, sizeof(ubuf.pkt)+len, 0, (void*)&arg->peer_addr, arg->peer_addr_len);
+			ret = ping4_send(arg->net_socket, ubuf.buffer, sizeof(ubuf.pkt)+len, 0);
 			if (ret<0) {
 				if (errno==EINTR) {
 					continue;
@@ -171,18 +172,6 @@ static void *thr_tun2net(void *p)
 	pthread_exit(NULL);
 }
 
-static int open_icmp_socket(cJSON *L2conf)
-{
-	int sd;
-
-	sd = socket(PF_INET, SOCK_RAW, IPPROTO_ICMP);
-	if (sd<0) {
-		perror("socket()");
-		abort();
-	}
-	return sd;
-}
-
 void *relayer_start(int tunfd, cJSON *conf)
 {
 	struct relayer_st *ctx;
@@ -193,20 +182,21 @@ void *relayer_start(int tunfd, cJSON *conf)
 	ctx = calloc(sizeof(*ctx), 1);
 
 	magic_word = conf_get_str("MagicWord", "Brutun1", conf);
-	strncpy(ctx->magic, magic_word, 8);
+	strncpy((void*)ctx->magic, magic_word, 8);
 	fprintf(stderr, "Magic=%s\n", ctx->magic);
+
+	ctx->net_socket = ping4_socket(0);
 
 	remote_ip = (void*)conf_get_str("RemoteAddress", NULL, conf);
 	if (remote_ip!=NULL) {
 		ctx->peer_addr.sin_family = PF_INET;
 		inet_pton(PF_INET, remote_ip, &ctx->peer_addr.sin_addr);
 		ctx->peer_addr_len = sizeof(ctx->peer_addr);
+		ping4_connect(ctx->net_socket, &ctx->peer_addr);
 		fprintf(stderr, "RemoteAddress =%s\n", remote_ip);
 	} else {
 		fprintf(stderr, "No RemoteAddress specified, running in passive mode.\n");
 	}
-
-	ctx->fd_socket = open_icmp_socket(conf);
 
 	ctx->fd_tun = tunfd;
 	ctx->dup_level = conf_get_int("DupLevel", DEFAULT_DUP_LEVEL, conf);
