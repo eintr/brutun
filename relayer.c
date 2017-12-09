@@ -78,15 +78,21 @@ static void *thr_udp2tun(void *p)
 	uint64_t serial_prev = 0;
 	uint32_t data_len;
 	struct pollfd *pfd;
+	int nr_pfd;
 
-	pfd = alloca(sizeof(struct pollfd)*arg->nr_sockets);
-	for (i=0; i<arg->nr_sockets; ++i) {
-		pfd[i].fd = arg->sockets[i];
-		pfd[i].events = POLLIN;
-	}
+	nr_pfd = 0;
+	pfd = NULL;
 
 	from_addr_len = sizeof(from_addr);
 	while(1) {
+		if (nr_pfd<arg->nr_sockets) {
+			pfd = realloc(pfd, sizeof(struct pollfd)*arg->nr_sockets);
+		}
+		for (i=0; i<arg->nr_sockets; ++i) {
+			pfd[i].fd = arg->sockets[i];
+			pfd[i].events = POLLIN;
+		}
+
 		while (poll(pfd, arg->nr_sockets, -1)<=0) {
 			perror("poll()");
 		}
