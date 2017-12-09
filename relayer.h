@@ -3,7 +3,8 @@
 
 #include "cJSON.h"
 
-void relay(int tunfd, cJSON *conf);
+void *relayer_start(int tunfd, cJSON *L2conf);
+void relayer_stop(void *);
 
 #endif
 

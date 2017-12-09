@@ -29,10 +29,16 @@ extern int hup_notified;
 #define	CODE_PING	1
 #define	CODE_PONG	1
 
-struct arg_relay_st {
-	int tun;
-	int socket;
+struct relayer_st {
+	int fd_tun;
+	int fd_socket;
 	int dup_level;
+
+	int terminate;
+	uint8_t magic[8];
+	pthread_t tid_net2tun, tid_tun2net;
+	struct sockaddr_in peer_addr;
+	socklen_t peer_addr_len = 0;
 };
 
 struct pkt_st {
@@ -45,10 +51,6 @@ struct pkt_st {
 
 #define	htonu64(X)	ntohu64(X)
 
-static uint8_t magic[8];
-static pthread_t tid_udp2tun, tid_tun2udp;
-static struct sockaddr_in peer_addr;
-static socklen_t peer_addr_len = 0;
 
 static uint64_t ntohu64(uint64_t input)
 {
@@ -77,7 +79,7 @@ static void *thr_socket2tun(void *p)
 	uint32_t data_len;
 
 	from_addr_len = sizeof(from_addr);
-	while(1) {
+	while(!arg->terminate) {
 		len = recvfrom(arg->socket, &ubuf, sizeof(ubuf), 0, (void*)&from_addr, &from_addr_len);
 		if (len==0) {
 			continue;
@@ -136,7 +138,7 @@ static void *thr_tun2socket(void *p)
 	ssize_t ret;
 
 	memcpy(ubuf.pkt.magic, magic, 8);
-	while(1) {
+	while(!arg->terminate) {
 		len = read(arg->tun, ubuf.pkt.data, sizeof(ubuf)-sizeof(struct pkt_st));
 		if (len==0) {
 			continue;
@@ -169,12 +171,12 @@ static void *thr_tun2socket(void *p)
 	pthread_exit(NULL);
 }
 
-static int open_icmp_socket(int *sd, cJSON *conf)
+static int open_icmp_socket(cJSON *L2conf)
 {
 	int sd;
 	struct sockaddr_in local_addr;
 
-	*sd = socket(PF_INET, SOCK_RAW, IPPROTO_ICMP);
+	sd = socket(PF_INET, SOCK_RAW, IPPROTO_ICMP);
 	if (*sd<0) {
 		perror("socket()");
 		abort();
@@ -182,49 +184,53 @@ static int open_icmp_socket(int *sd, cJSON *conf)
 	return 0;
 }
 
-void relay(int tunfd, cJSON *conf)
+void *relay_start(int tunfd, cJSON *conf)
 {
-	struct arg_relay_st arg;
+	struct relayer_st *ctx;
 	int err;
 	char *remote_ip;
 	const char* magic_word;
 
-	magic_word = (void*)conf_get_str("MagicWord", "Brutun1", conf);
-	memset(magic, 0, 8);
-	strncpy((void*)magic, magic_word, 8);
-	fprintf(stderr, "Magic=%s\n", magic);
+	ctx = calloc(sizeof(*ctx), 1);
 
-	memset(&peer_addr, 0, sizeof(peer_addr));
+	magic_word = conf_get_str("MagicWord", "Brutun1", conf);
+	strncpy((ctx->magic, magic_word, 8);
+	fprintf(stderr, "Magic=%s\n", magic);
 
 	remote_ip = (void*)conf_get_str("RemoteAddress", NULL, conf);
 	if (remote_ip!=NULL) {
-		peer_addr.sin_family = PF_INET;
-		inet_pton(PF_INET, remote_ip, &peer_addr.sin_addr);
-		peer_addr_len = sizeof(peer_addr);
+		ctx->peer_addr.sin_family = PF_INET;
+		inet_pton(PF_INET, remote_ip, &ctx->peer_addr.sin_addr);
+		ctx->peer_addr_len = sizeof(ctx->peer_addr);
 		fprintf(stderr, "RemoteAddress =%s, RemotePort=%d\n", remote_ip, remote_port);
 	} else {
 		fprintf(stderr, "No RemoteAddress specified, running in passive mode.\n");
 	}
 
-	open_icmp_socket(&arg.sockets, &arg.nr_sockets, conf);
+	ctx->fd_socket = open_icmp_socket(conf);
 
-	arg.tun = tunfd;
-	arg.dup_level = conf_get_int("DupLevel", DEFAULT_DUP_LEVEL, conf);
-	fprintf(stderr, "DupLevel=%d\n", arg.dup_level);
+	ctx->fd_tun = tunfd;
+	ctx->dup_level = conf_get_int("DupLevel", DEFAULT_DUP_LEVEL, conf);
+	fprintf(stderr, "DupLevel=%d\n", ctx->dup_level);
 
-	err = pthread_create(&tid_socket2tun, NULL, thr_socket2tun, &arg);
+	err = pthread_create(&ctx->tid_net2tun, NULL, thr_socket2tun, ctx);
 	if (err) {
 		fprintf(stderr, "pthread_create(): %s\n", strerror(err));
 		exit(1);
 	}
 
-	err = pthread_create(&tid_tun2socket, NULL, thr_tun2socket, &arg);
+	err = pthread_create(&ctx->tid_tun2net, NULL, thr_tun2socket, ctx);
 	if (err) {
 		fprintf(stderr, "pthread_create(): %s\n", strerror(err));
 		exit(1);
 	}
 
-	pthread_join(tid_tun2socket, NULL);
-	pthread_join(tid_socket2tun, NULL);
+	return ctx;
+}
+
+void relay_stop(void *ctx)
+{
+	pthread_join(ctx->tid_tun2net, NULL);
+	pthread_join(ctx->tid_net2tun, NULL);
 }
 

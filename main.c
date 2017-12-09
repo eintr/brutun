@@ -1,9 +1,9 @@
 /********************************************************
- *  Sorry, no garbage infomations here.
- *  Lisence: read the LISENCE file,
- *  Author(s): read the AUTHOR file and the git commit log,
- *  Code history: read the git commit log.
- *  That's all.
+ *  License:	Read the LICENSE file,
+ *  Author(s):	Read the AUTHOR file and the git commit log,
+ *  Code history:	Read the git commit log.
+ *
+ *  No garbage infomations here.
  ********************************************************/
 
 #include <stdio.h>
@@ -141,8 +141,8 @@ main(int argc, char **argv)
 
 	signal(SIGHUP, hup_handler);
 
-	tun_local_addr = conf_get_str("TunnelLocalAddr", NULL, conf_get("IPConfig", NULL, conf));
-	tun_peer_addr = conf_get_str("TunnelPeerAddr", NULL, conf_get("IPConfig", NULL, conf));
+	tun_local_addr = conf_get_str("TunnelLocalAddr", NULL, conf_get("L3Config", NULL, conf));
+	tun_peer_addr = conf_get_str("TunnelPeerAddr", NULL, conf_get("L3Config", NULL, conf));
 	if (tun_local_addr==NULL || tun_peer_addr==NULL) {
 		fprintf(stderr, "Must define TunnelLocalAddr and TunnelPeerAddr in config file!\n");
 		exit(1);
@@ -160,7 +160,7 @@ main(int argc, char **argv)
 	snprintf(cmdline, BUFSIZE, "ip link set dev %s up", tun_name);
 	shell(cmdline);
 
-	routes = conf_get("RoutePrefix", NULL, conf_get("IPConfig", NULL, conf));
+	routes = conf_get("RoutePrefix", NULL, conf_get("L3Config", NULL, conf));
 	if (routes && routes->type==cJSON_Array) {
 		int i;
 		for (i=0; i<cJSON_GetArraySize(routes); ++i) {
@@ -173,13 +173,13 @@ main(int argc, char **argv)
 		}
 	}
 
-	default_route = conf_get_str("DefaultRoute", NULL, conf_get("IPConfig", NULL, conf));
+	default_route = conf_get_str("DefaultRoute", NULL, conf_get("L3Config", NULL, conf));
 	if (default_route!=NULL) {
 		snprintf(cmdline, BUFSIZE, "ip route add default dev %s table %s", tun_name, default_route);
 		shell(cmdline);
 	}
 
-	relay(tun_fd, conf_get("LConfig", NULL, conf));
+	relay(tun_fd, conf_get("L2Config", NULL, conf));
 
 	close(tun_fd);
 
