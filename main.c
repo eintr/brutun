@@ -179,8 +179,12 @@ main(int argc, char **argv)
 		shell(cmdline);
 	}
 
-	relay(tun_fd, conf_get("L2Config", NULL, conf));
+	struct relayer_st *r;
+	r = relayer_start(tun_fd, conf_get("L2Config", NULL, conf));
 
+	while (1) pause();
+
+	relayer_stop(r);
 	close(tun_fd);
 
 	return 0;

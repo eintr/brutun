@@ -38,7 +38,7 @@ struct relayer_st {
 	uint8_t magic[8];
 	pthread_t tid_net2tun, tid_tun2net;
 	struct sockaddr_in peer_addr;
-	socklen_t peer_addr_len = 0;
+	socklen_t peer_addr_len;
 };
 
 struct pkt_st {
@@ -65,12 +65,12 @@ static uint64_t ntohu64(uint64_t input)
 	return b.u64;
 }
 
-static void *thr_socket2tun(void *p)
+static void *thr_net2tun(void *p)
 {
-	struct arg_relay_st *arg=p;
+	struct relayer_st *arg=p;
 	struct sockaddr_in from_addr;
 	socklen_t from_addr_len;
-	int len, ret, i;
+	int len, ret;
 	union {
 		char buffer[BUFSIZE];
 		struct pkt_st pkt;
@@ -80,19 +80,19 @@ static void *thr_socket2tun(void *p)
 
 	from_addr_len = sizeof(from_addr);
 	while(!arg->terminate) {
-		len = recvfrom(arg->socket, &ubuf, sizeof(ubuf), 0, (void*)&from_addr, &from_addr_len);
+		len = recvfrom(arg->fd_socket, &ubuf, sizeof(ubuf), 0, (void*)&from_addr, &from_addr_len);
 		if (len==0) {
 			continue;
 		}
 
-		if (memcmp(ubuf.pkt.magic, magic, 8)!=0) {
+		if (memcmp(ubuf.pkt.magic, arg->magic, 8)!=0) {
 			//fprintf(stderr, "Ignored unknown source packet\n");
 			continue;
 		}
 
-		peer_addr.sin_addr.s_addr = from_addr.sin_addr.s_addr;
-		peer_addr.sin_port = from_addr.sin_port;
-		peer_addr_len = from_addr_len;
+		arg->peer_addr.sin_addr.s_addr = from_addr.sin_addr.s_addr;
+		arg->peer_addr.sin_port = from_addr.sin_port;
+		arg->peer_addr_len = from_addr_len;
 
 		data_len = ntohs(ubuf.pkt.len);
 
@@ -104,10 +104,10 @@ static void *thr_socket2tun(void *p)
 		//fprintf(stderr, "Accepted packet %llu\n", (long long unsigned)ntohu64(ubuf.pkt.serial));
 		serial_prev = ntohu64(ubuf.pkt.serial);
 
-		dec(ubuf.pkt.data, data_len, magic);
+		dec(ubuf.pkt.data, data_len, arg->magic);
 
 		while (1) {
-			ret = write(arg->tun, ubuf.pkt.data, data_len);
+			ret = write(arg->fd_tun, ubuf.pkt.data, data_len);
 			if (ret<0) {
 				if (errno==EINTR) {
 					continue;
@@ -126,9 +126,9 @@ quit:
 	pthread_exit(NULL);
 }
 
-static void *thr_tun2socket(void *p)
+static void *thr_tun2net(void *p)
 {
-	struct arg_relay_st *arg=p;
+	struct relayer_st *arg=p;
 	union {
 		char buffer[BUFSIZE];
 		struct pkt_st pkt;
@@ -137,13 +137,13 @@ static void *thr_tun2socket(void *p)
 	uint64_t serial = rand();
 	ssize_t ret;
 
-	memcpy(ubuf.pkt.magic, magic, 8);
+	memcpy(ubuf.pkt.magic, arg->magic, 8);
 	while(!arg->terminate) {
-		len = read(arg->tun, ubuf.pkt.data, sizeof(ubuf)-sizeof(struct pkt_st));
+		len = read(arg->fd_tun, ubuf.pkt.data, sizeof(ubuf)-sizeof(struct pkt_st));
 		if (len==0) {
 			continue;
 		}
-		if (peer_addr_len==0) {
+		if (arg->peer_addr_len==0) {
 			fprintf(stderr, "Warning: Passive side can't send packets before peer address is discovered, drop.\n");
 			continue;
 		}
@@ -151,17 +151,17 @@ static void *thr_tun2socket(void *p)
 		ubuf.pkt.len = htons(len);
 		ubuf.pkt.serial = htonu64(serial);
 
-		enc(ubuf.pkt.data, len, magic);
+		enc(ubuf.pkt.data, len, arg->magic);
 
 		for (i=0; i<arg->dup_level; ++i) {
-			ret = sendto(arg->socket, ubuf.buffer, sizeof(ubuf.pkt)+len, 0, (void*)&peer_addr, peer_addr_len);
+			ret = sendto(arg->fd_socket, ubuf.buffer, sizeof(ubuf.pkt)+len, 0, (void*)&arg->peer_addr, arg->peer_addr_len);
 			if (ret<0) {
 				if (errno==EINTR) {
 					continue;
 				}
 				fprintf(stderr, "sendto(sd): %m, drop\n");
 			}
-			fprintf(stderr, "sent(serial %llu)\n", serial);
+			fprintf(stderr, "sent(serial %llu)\n", (unsigned long long)serial);
 		}
 		serial++;
 		if (hup_notified) {
@@ -174,17 +174,16 @@ static void *thr_tun2socket(void *p)
 static int open_icmp_socket(cJSON *L2conf)
 {
 	int sd;
-	struct sockaddr_in local_addr;
 
 	sd = socket(PF_INET, SOCK_RAW, IPPROTO_ICMP);
-	if (*sd<0) {
+	if (sd<0) {
 		perror("socket()");
 		abort();
 	}
-	return 0;
+	return sd;
 }
 
-void *relay_start(int tunfd, cJSON *conf)
+void *relayer_start(int tunfd, cJSON *conf)
 {
 	struct relayer_st *ctx;
 	int err;
@@ -194,15 +193,15 @@ void *relay_start(int tunfd, cJSON *conf)
 	ctx = calloc(sizeof(*ctx), 1);
 
 	magic_word = conf_get_str("MagicWord", "Brutun1", conf);
-	strncpy((ctx->magic, magic_word, 8);
-	fprintf(stderr, "Magic=%s\n", magic);
+	strncpy(ctx->magic, magic_word, 8);
+	fprintf(stderr, "Magic=%s\n", ctx->magic);
 
 	remote_ip = (void*)conf_get_str("RemoteAddress", NULL, conf);
 	if (remote_ip!=NULL) {
 		ctx->peer_addr.sin_family = PF_INET;
 		inet_pton(PF_INET, remote_ip, &ctx->peer_addr.sin_addr);
 		ctx->peer_addr_len = sizeof(ctx->peer_addr);
-		fprintf(stderr, "RemoteAddress =%s, RemotePort=%d\n", remote_ip, remote_port);
+		fprintf(stderr, "RemoteAddress =%s\n", remote_ip);
 	} else {
 		fprintf(stderr, "No RemoteAddress specified, running in passive mode.\n");
 	}
@@ -213,13 +212,13 @@ void *relay_start(int tunfd, cJSON *conf)
 	ctx->dup_level = conf_get_int("DupLevel", DEFAULT_DUP_LEVEL, conf);
 	fprintf(stderr, "DupLevel=%d\n", ctx->dup_level);
 
-	err = pthread_create(&ctx->tid_net2tun, NULL, thr_socket2tun, ctx);
+	err = pthread_create(&ctx->tid_net2tun, NULL, thr_net2tun, ctx);
 	if (err) {
 		fprintf(stderr, "pthread_create(): %s\n", strerror(err));
 		exit(1);
 	}
 
-	err = pthread_create(&ctx->tid_tun2net, NULL, thr_tun2socket, ctx);
+	err = pthread_create(&ctx->tid_tun2net, NULL, thr_tun2net, ctx);
 	if (err) {
 		fprintf(stderr, "pthread_create(): %s\n", strerror(err));
 		exit(1);
@@ -228,8 +227,9 @@ void *relay_start(int tunfd, cJSON *conf)
 	return ctx;
 }
 
-void relay_stop(void *ctx)
+void relayer_stop(void *p)
 {
+	struct relayer_st *ctx=p;
 	pthread_join(ctx->tid_tun2net, NULL);
 	pthread_join(ctx->tid_net2tun, NULL);
 }
