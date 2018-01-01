@@ -69,7 +69,7 @@ ssize_t ping4_recv(ping4_sock_t *self, void *buf, size_t bufsize, int flags)
 	struct sockaddr_in from;
 	ssize_t len, paylen;
 	struct iphdr *ip;
-	//struct icmphdr *icmp;
+	struct icmphdr *icmp;
 	char tmpbuf[65536], *payload;
 
 	socklen_t fromlen = sizeof(from);
@@ -77,10 +77,10 @@ ssize_t ping4_recv(ping4_sock_t *self, void *buf, size_t bufsize, int flags)
 		len = recvfrom(p->sd, tmpbuf, 65536, flags, (void*)&from, &fromlen);
 		fprintf(stderr, "recvfrom() => %d\n", (int)len);
 		ip = (void*)tmpbuf;
-		//icmp = (void*)(tmpbuf + ip->ihl*4);
+		icmp = (void*)(tmpbuf + ip->ihl*4);
 		payload = (void*)(tmpbuf + ip->ihl*4 + 8);
 		paylen = len - ip->ihl*4 - 8;
-		if (memcmp(&from, &p->peer, sizeof(struct sockaddr_in))==0) {
+		if (memcmp(&from, &p->peer, sizeof(struct sockaddr_in))==0 && icmp->type == ICMP_ECHO) {
 			memcpy(buf, payload, paylen);
 			return paylen;
 		}
