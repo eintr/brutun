@@ -85,9 +85,10 @@ static void *thr_net2tun(void *p)
 		if (len==0) {
 			continue;
 		}
+		fprintf(stderr, "ping4_recv() => %d\n", (int)len);
 
 		if (memcmp(ubuf.pkt.magic, arg->magic, 8)!=0) {
-			//fprintf(stderr, "Ignored unknown source packet\n");
+			fprintf(stderr, "Ignored bad magic\n");
 			continue;
 		}
 

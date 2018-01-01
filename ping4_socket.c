@@ -75,7 +75,6 @@ ssize_t ping4_recv(ping4_sock_t *self, void *buf, size_t bufsize, int flags)
 	socklen_t fromlen = sizeof(from);
 	while (1) {
 		len = recvfrom(p->sd, tmpbuf, 65536, flags, (void*)&from, &fromlen);
-		fprintf(stderr, "recvfrom() => %d\n", (int)len);
 		ip = (void*)tmpbuf;
 		icmp = (void*)(tmpbuf + ip->ihl*4);
 		payload = (void*)(tmpbuf + ip->ihl*4 + 8);
