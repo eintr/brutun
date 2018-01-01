@@ -47,7 +47,7 @@ ping4_sock_t *ping4_socket(int flags)
 {
 	struct ping4_sock_st *r;
 
-	r = malloc(sizeof(*r));
+	r = calloc(sizeof(*r), 1);
 	r->sd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
 	if (r->sd<0) {
 		perror("socket()");
