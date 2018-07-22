@@ -17,6 +17,7 @@
 struct ping4_sock_st {
 	int sd;
 	unsigned int cnt;
+	uint16_t ping_id;
 	struct sockaddr_in peer, local;
 };
 
@@ -53,6 +54,7 @@ ping4_sock_t *ping4_socket(int flags)
 		perror("socket()");
 	}
 	r->cnt = 0;
+	r->ping_id = getpid()+1;
 	return r;
 }
 
@@ -69,22 +71,22 @@ ssize_t ping4_recv(ping4_sock_t *self, void *buf, size_t bufsize, int flags)
 	struct sockaddr_in from;
 	ssize_t len, paylen;
 	struct iphdr *ip;
-	//struct icmphdr *icmp;
+	struct icmphdr *icmp;
 	char tmpbuf[65536], *payload;
 
 	socklen_t fromlen = sizeof(from);
 	while (1) {
 		len = recvfrom(p->sd, tmpbuf, 65536, flags, (void*)&from, &fromlen);
-		fprintf(stderr, "recvfrom() => %d\n", (int)len);
+		//fprintf(stderr, "recvfrom() => %d\n", len);
 		ip = (void*)tmpbuf;
-		//icmp = (void*)(tmpbuf + ip->ihl*4);
+		icmp = (void*)(tmpbuf + ip->ihl*4);
 		payload = (void*)(tmpbuf + ip->ihl*4 + 8);
 		paylen = len - ip->ihl*4 - 8;
 		if (memcmp(&from, &p->peer, sizeof(struct sockaddr_in))==0) {
 			memcpy(buf, payload, paylen);
 			return paylen;
 		}
-		fprintf(stderr, ".");
+		//fprintf(stderr, ".");
 	}
 }
 
@@ -97,61 +99,83 @@ ssize_t ping4_send(ping4_sock_t *self, const void *data, size_t len, int flags)
 	buflen = sizeof(struct packet_st) + len;
 
 	buf = alloca(buflen);
-	memset(buf, 0, buflen); 
+	memset(buf, 0, buflen);
 
 	buf->hdr.type = ICMP_ECHO;
-	buf->hdr.un.echo.id = getpid();
-	buf->hdr.un.echo.sequence = p->cnt++;
+	buf->hdr.un.echo.id = htons(p->ping_id);
+	buf->hdr.un.echo.sequence = htons(p->cnt++);
 	memcpy(buf->payload, data, len);
 	buf->hdr.checksum = tcpip_csum(buf, buflen);
 
-	return sendto(p->sd, buf, buflen, flags, (void*)&p->peer, sizeof(struct sockaddr_in)); 
+	return sendto(p->sd, buf, buflen, flags, (void*)&p->peer, sizeof(struct sockaddr_in));
 }
 
 #ifdef UT
 
 #include <assert.h>
 
-static void dump(const void *p, int len)
-{   
+static void dump(const char *title, const char *buf, size_t len)
+{
 	int i;
-	for (i=0; i<len; ++i) {
-		printf("%.2x, ", ((unsigned char*)p)[i]);
-	}
-	printf("\n");
+		fputs(title, stderr);
+		fputs(": ", stderr);
+		for (i=0; i<len; ++i) {
+			unsigned char c = ((unsigned char*)buf)[i];
+			if (isprint(c)) {
+				fputc(c, stderr);
+			} else {
+				fprintf(stderr, "[0x%.2x]", c);
+			}
+		}
+		fputc('\n', stderr);
+		fflush(stderr);
 }
 
-	int
+static void *thr_rcver(void *ptr)
+{
+	ping4_sock_t *c=ptr;
+
+	struct timeval in, out;
+	ssize_t r;
+
+	while (1) {
+		r = ping4_recv(c, &out, sizeof(out), 0);
+		printf("Recv %d bytes\n", r);
+		dump("Recv", &out, r);
+
+		gettimeofday(&in, NULL);
+
+		fprintf(stderr, "rtt=%ld\n", (in.tv_sec - out.tv_sec)*1000+(in.tv_usec - out.tv_usec)/1000);
+	}
+}
+
+int
 main()
-{   
+{
 	ping4_sock_t *c;
 	struct sockaddr_in dst;
+	pthread_t tid;
 
 	c = ping4_socket(0);
 
 	memset(&dst, 0, sizeof(dst));
 	dst.sin_family = AF_INET;
-	inet_pton(AF_INET, "10.33.106.206", &dst.sin_addr);
+	inet_pton(AF_INET, "10.23.247.58", &dst.sin_addr);
 
 	ping4_connect(c, &dst);
 
+	assert(pthread_create(&tid, NULL, thr_rcver, c)==0);
+
 	while (1) {
-		struct timeval out, in;
+		struct timeval out;
 		ssize_t r;
+
 		gettimeofday(&out, NULL);
+		r = ping4_send(c, &out, sizeof(out), 0);
+		printf("Sent %d/%d bytes\n", r, sizeof(out));
 
-		r = ping4_send(c, &out, sizeof(out), 0)==sizeof(out);
-		printf("Sent %d bytes\n", r);
-
-		r = ping4_recv(c, &out, sizeof(out), 0)==sizeof(out);
-		printf("Recv %d bytes\n", r);
-
-		gettimeofday(&in, NULL);
-
-		fprintf(stderr, "rtt=%ld\n", (in.tv_sec - out.tv_sec)*1000+(in.tv_usec - out.tv_usec)/1000);
 		sleep(1);
 	}
 }
 
 #endif
-
