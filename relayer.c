@@ -66,6 +66,12 @@ static uint64_t ntohu64(uint64_t input)
 	return b.u64;
 }
 
+static char *ipstr(struct sockaddr_in *a, char buf[64])
+{
+	inet_ntop(AF_INET, &a->sin_addr, buf, 64);
+	return buf;
+}
+
 static void *thr_net2tun(void *p)
 {
 	struct relayer_st *arg=p;
@@ -85,15 +91,20 @@ static void *thr_net2tun(void *p)
 		if (len==0) {
 			continue;
 		}
+		fprintf(stderr, "ping4_recv() => %d\n", (int)len);
 
 		if (memcmp(ubuf.pkt.magic, arg->magic, 8)!=0) {
-			//fprintf(stderr, "Ignored unknown source packet\n");
+			fprintf(stderr, "Ignored bad magic\n");
 			continue;
 		}
 
-		arg->peer_addr.sin_addr.s_addr = from_addr.sin_addr.s_addr;
-		arg->peer_addr.sin_port = from_addr.sin_port;
-		arg->peer_addr_len = from_addr_len;
+		if (arg->peer_addr.sin_addr.s_addr!=from_addr.sin_addr.s_addr) {
+			char tmp[64];
+			fprintf(stderr, "Following remote address: %s\n", ipstr(&from_addr, tmp));
+			arg->peer_addr.sin_addr.s_addr = from_addr.sin_addr.s_addr;
+			arg->peer_addr.sin_port = from_addr.sin_port;
+			arg->peer_addr_len = from_addr_len;
+		}
 
 		data_len = ntohs(ubuf.pkt.len);
 

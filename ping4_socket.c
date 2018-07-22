@@ -48,7 +48,7 @@ ping4_sock_t *ping4_socket(int flags)
 {
 	struct ping4_sock_st *r;
 
-	r = malloc(sizeof(*r));
+	r = calloc(sizeof(*r), 1);
 	r->sd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
 	if (r->sd<0) {
 		perror("socket()");
@@ -82,9 +82,15 @@ ssize_t ping4_recv(ping4_sock_t *self, void *buf, size_t bufsize, int flags)
 		icmp = (void*)(tmpbuf + ip->ihl*4);
 		payload = (void*)(tmpbuf + ip->ihl*4 + 8);
 		paylen = len - ip->ihl*4 - 8;
-		if (memcmp(&from, &p->peer, sizeof(struct sockaddr_in))==0) {
-			memcpy(buf, payload, paylen);
-			return paylen;
+		if (p->peer.sin_addr.s_addr==0 || memcmp(&from, &p->peer, sizeof(struct sockaddr_in))==0) {
+			if (icmp->type == ICMP_ECHO) {
+				memcpy(buf, payload, paylen);
+				return paylen;
+			} else {
+				fprintf(stderr, "Ignored unknown unkown code\n");
+			}
+		} else {
+			fprintf(stderr, "Ignored unknown source\n");
 		}
 		//fprintf(stderr, ".");
 	}
