@@ -183,13 +183,14 @@ static void *thr_tun2udp(void *p)
 				fprintf(stderr, "sendto(sd): %m, drop\n");
 			}
 			//fprintf(stderr, "sent(serial %llu)\n", serial);
+			socket_id = (socket_id+1)%arg->nr_sockets;
 		}
 		serial++;
-		if (hup_notified) {
+/*		if (hup_notified) {
 			hup_notified = 0;
 			socket_id = (socket_id+1)%arg->nr_sockets;
 			fprintf(stderr, "Source port changed\n");
-		}
+		} */
 	}
 	pthread_exit(NULL);
 }
@@ -244,6 +245,29 @@ static void open_udp_sockets(int **sdarr, int *sdarr_sz, cJSON *conf)
 			(*sdarr)[i] = open_udp_socket(jport->valueint);
 			fprintf(stderr, "Opened UDP port: %d\n", jport->valueint);
 		}
+	} else if (port_conf->type==cJSON_Object) {
+		int port_start, port_end, i, p;
+		port_start = conf_get_int("Start", 60001, port_conf);
+		port_end = conf_get_int("End", 60010, port_conf);
+		if (port_start > port_end) {
+			fprintf(stderr, "Illegal LocalPort range!\n");
+			abort();
+		}
+		*sdarr_sz = port_end - port_start + 1;
+		*sdarr = malloc(sizeof(int)*(*sdarr_sz));
+		for (i=0,p=port_start; p<=port_end; ++p) {
+			int sd;
+			sd = open_udp_socket(p);
+			if (sd>=0) {
+				(*sdarr)[i++] = sd;
+				fprintf(stderr, "Opened UDP port: %d\n", p);
+			}
+		}
+		if (i==0) {
+			fprintf(stderr, "No LocalPorts availlable!\n");
+			abort();
+		}
+		*sdarr_sz = i;
 	} else {
 		fprintf(stderr, "Illegal LocalPort!\n");
 		abort();

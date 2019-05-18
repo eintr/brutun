@@ -1,4 +1,4 @@
-CFLAGS+= -I. -pthread -Wall -g -D_GNU_SOURCE -O0
+CFLAGS+= -I. -pthread -Wall -g -D_GNU_SOURCE -O3
 
 LDFLAGS+=-lpthread -lm -lssl -lcrypto -lrt
 
