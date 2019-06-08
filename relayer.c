@@ -109,6 +109,11 @@ static void *thr_udp2tun(void *p)
 					continue;
 				}
 
+				if (ubuf.pkt.code != CODE_DATA) {
+					//fprintf(stderr, "Not support non-data packet\n");
+					continue;
+				}
+
 				peer_addr.sin_addr.s_addr = from_addr.sin_addr.s_addr;
 				peer_addr.sin_port = from_addr.sin_port;
 				peer_addr_len = from_addr_len;
@@ -168,7 +173,7 @@ static void *thr_tun2udp(void *p)
 			fprintf(stderr, "Warning: Passive side can't send packets before peer address is discovered, drop.\n");
 			continue;
 		}
-
+		ubuf.pkt.code = CODE_DATA;
 		ubuf.pkt.len = htons(len);
 		ubuf.pkt.serial = htonu64(serial);
 
