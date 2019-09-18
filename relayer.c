@@ -49,7 +49,7 @@ struct pkt_st {
 
 static uint8_t magic[8];
 static pthread_t tid_udp2tun, tid_tun2udp;
-static struct sockaddr_in peer_addr;
+static struct sockaddr_in6 peer_addr;
 static socklen_t peer_addr_len = 0;
 
 static uint64_t ntohu64(uint64_t input)
@@ -114,8 +114,9 @@ static void *thr_udp2tun(void *p)
 					continue;
 				}
 
-				peer_addr.sin_addr.s_addr = from_addr.sin_addr.s_addr;
-				peer_addr.sin_port = from_addr.sin_port;
+				peer_addr.sin6_family = from_addr.sin6_family;
+				memcpy(&peer_addr.sin6_addr, &from_addr.sin_addr, sizeof(peer_addr.sin6_addr));
+				peer_addr.sin6_port = from_addr.sin6_port;
 				peer_addr_len = from_addr_len;
 
 				data_len = ntohs(ubuf.pkt.len);
@@ -294,9 +295,9 @@ void relay(int tunfd, cJSON *conf)
 	remote_ip = (void*)conf_get_str("RemoteAddress", NULL, conf);
 	remote_port = conf_get_int("RemotePort", 60001, conf);
 	if (remote_ip!=NULL) {
-		peer_addr.sin_family = PF_INET;
-		inet_pton(PF_INET, remote_ip, &peer_addr.sin_addr);
-		peer_addr.sin_port = htons(remote_port);
+		peer_addr.sin6_family = PF_INET6;
+		inet_pton(PF_INET6, remote_ip, &peer_addr.sin6_addr);
+		peer_addr.sin6_port = htons(remote_port);
 		peer_addr_len = sizeof(peer_addr);
 		fprintf(stderr, "RemoteAddress =%s, RemotePort=%d\n", remote_ip, remote_port);
 	} else {
