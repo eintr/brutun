@@ -203,17 +203,17 @@ static void *thr_tun2udp(void *p)
 static int open_udp_socket(int port)
 {
 	int sd;
-	struct sockaddr_in local_addr;
+	struct sockaddr_in6 local_addr;
 
-	sd = socket(PF_INET, SOCK_DGRAM, 0);
+	sd = socket(PF_INET6, SOCK_DGRAM, 0);
 	if (sd<0) {
 		perror("socket()");
 		abort();
 	}
 
-	local_addr.sin_family = PF_INET;
-	local_addr.sin_addr.s_addr = 0;
-	local_addr.sin_port = htons(port);
+	local_addr.sin6_family = PF_INET6;
+	inet_pton(AF_INET6, "::", &local_addr.sin6_addr);
+	local_addr.sin6_port = htons(port);
 	if (bind(sd, (void*)&local_addr, sizeof(local_addr))<0) {
 		fprintf(stderr, "bind(%d): %m", port);
 		abort();
