@@ -68,7 +68,7 @@ static uint64_t ntohu64(uint64_t input)
 static void *thr_udp2tun(void *p)
 {
 	struct arg_relay_st *arg=p;
-	struct sockaddr_in from_addr;
+	struct sockaddr_in6 from_addr;
 	socklen_t from_addr_len;
 	int len, ret, i;
 	union {
@@ -115,7 +115,7 @@ static void *thr_udp2tun(void *p)
 				}
 
 				peer_addr.sin6_family = from_addr.sin6_family;
-				memcpy(&peer_addr.sin6_addr, &from_addr.sin_addr, sizeof(peer_addr.sin6_addr));
+				memcpy(&peer_addr.sin6_addr, &from_addr.sin6_addr, sizeof(peer_addr.sin6_addr));
 				peer_addr.sin6_port = from_addr.sin6_port;
 				peer_addr_len = from_addr_len;
 
