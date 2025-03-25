@@ -1,21 +1,28 @@
-CFLAGS+= -I. -pthread -Wall -g -D_GNU_SOURCE -O3
+include config.mk
 
-LDFLAGS+=-lpthread -lm -lssl -lcrypto -lrt
+CFLAGS+= -I. -pthread -Wall -D_GNU_SOURCE -O3
+
+#LDFLAGS+=-lpthread -lm -lssl -lcrypto -lrt -ldl
+LDFLAGS+=-lpthread -lm -ldl -rdynamic
 
 SERVERFNAME=brutun
 
-sources=main.c relayer.c util_time.c json_conf.c cJSON.c cryp.c
+sources=main.c util_time.c cryp.c util_cjson.c cJSON.c
 
 objects=$(sources:.c=.o)
 
 all: $(SERVERFNAME)
+	make -C carrier $@
 
 $(SERVERFNAME): $(objects)
 	    $(CC) -o $@ $^ $(LDFLAGS)
 
 install: all
-	    install $(SERVERFNAME) /usr/local/sbin/
+	mkdir -p $(INSTALL_SBINDIR) $(INSTALL_PLUGINDIR)
+	install $(SERVERFNAME) $(INSTALL_SBINDIR)
+	install carrier/*/*.so $(INSTALL_PLUGINDIR)
 
 clean:
-	    rm -f $(objects) $(SERVERFNAME)
+	make -C carrier $@
+	rm -f $(objects) $(SERVERFNAME)
 

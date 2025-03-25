@@ -9,55 +9,37 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <stdarg.h>
 #include <fcntl.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <errno.h>
 #include <signal.h>
-#include <arpa/inet.h>
 #include <sys/types.h>
+#include <sys/socket.h>
+#include <dlfcn.h>
+#include <pthread.h>
 
 #include <linux/if.h>
 #include <linux/if_tun.h>
 
-#include "json_conf.h"
-#include "protocol.h"
-#include "relayer.h"
+#include "util_cjson.h"
+#include "carrier_interface.h"
 
-int hup_notified = 0;
+#define	CMDSIZE	1024
+#define	PKTSIZE	65536
 
-static char *config_file;
+int hup_notified=0;
 
-static void parse_args(int argc, char **argv)
-{
-	int c;
+static carrier_interface_t *carrier = NULL;
+static void *carrier_handler=NULL;
+static void *carrier_ctx=NULL;
+static int loop=1;
+static int tun_fd=-1;
 
-	do {
-		c = getopt(argc, argv, "c:");
-		switch (c) {
-		case 'c':
-			config_file = optarg;
-			break;
-		default:
-			break;
-		}
-	} while (c != -1);
-
-	if (config_file == NULL) {
-		fprintf(stderr, "Usage: %s -c CONFIG_FILE\n", argv[0]);
-		abort();
-	}
-}
-
-static int tun_alloc(char *dev, int flags)
-{
+static int tun_alloc(char *dev) {
 
 	struct ifreq ifr;
 	int fd, err;
-	char *clonedev = "/dev/net/tun";
 
 	/* Arguments taken by the function:
 	 *
@@ -67,14 +49,14 @@ static int tun_alloc(char *dev, int flags)
 	 */
 
 	/* open the clone device */
-	if ((fd = open(clonedev, O_RDWR)) < 0) {
+	if( (fd = open("/dev/net/tun", O_RDWR)) < 0 ) {
 		return fd;
 	}
 
 	/* preparation of the struct ifr, of type "struct ifreq" */
 	memset(&ifr, 0, sizeof(ifr));
 
-	ifr.ifr_flags = flags;	/* IFF_TUN or IFF_TAP, plus maybe IFF_NO_PI */
+	ifr.ifr_flags = IFF_TUN | IFF_NO_PI;   /* IFF_TUN or IFF_TAP, plus maybe IFF_NO_PI */
 
 	if (*dev) {
 		/* if a device name was specified, put it in the structure; otherwise,
@@ -84,7 +66,7 @@ static int tun_alloc(char *dev, int flags)
 	}
 
 	/* try to create the device */
-	if ((err = ioctl(fd, TUNSETIFF, (void *)&ifr)) < 0) {
+	if ( (err = ioctl(fd, TUNSETIFF, (void *) &ifr)) < 0 ) {
 		close(fd);
 		return err;
 	}
@@ -100,30 +82,33 @@ static int tun_alloc(char *dev, int flags)
 	return fd;
 }
 
-static int shell(const char *fmt, ...)
+static int shell(const char *cmd)
 {
-	const size_t max_cmdlen = 128 * 1024;
 	int ret;
-	char *cmd;
 
-	cmd = malloc(max_cmdlen);
-	{
-		va_list al;
-		va_start(al, fmt);
-		vsnprintf(cmd, max_cmdlen - 1, fmt, al);
-		cmd[max_cmdlen - 1] = 0;
-		va_end(al);
-	}
-
-	fprintf(stderr, "run: %s\n", cmd);
+	fprintf(stderr, "run: %s  ...  ", cmd);
 	ret = system(cmd);
-	if (ret == -1) {
+	if (ret==-1) {
 		fprintf(stderr, "failed: %m.\n");
 	} else {
 		fprintf(stderr, "status=%d.\n", ret);
 	}
-	free(cmd);
 	return ret;
+}
+
+static void *thr_tun_reader(void *p)
+{
+	char buffer[PKTSIZE];
+	int len;
+
+	while(loop) {
+		len = read(tun_fd, buffer, PKTSIZE);
+		if (len<=0) {
+			continue;
+		}
+		carrier->send_packet(carrier_ctx, buffer, len);
+	}
+	pthread_exit(NULL);
 }
 
 static void hup_handler(int s)
@@ -131,72 +116,121 @@ static void hup_handler(int s)
 	hup_notified = 1;
 }
 
-#define	BUFSIZE	1024
-
-int main(int argc, char **argv)
+static void sig_exit(int s)
 {
-	int tun_fd;
-	char tun_name[IFNAMSIZ];
-	cJSON *conf, *routes;
-	const char *tun_mode, *tun_local_addr, *tun_peer_addr, *default_route;
+	loop = 0;
+}
 
-	parse_args(argc, argv);
-
-	srand(getpid());
-
-	conf = conf_load_file(config_file);
-	if (conf == NULL) {
-		fprintf(stderr, "Load config failed.\n");
-		exit(1);
+static void cb_recv(const void *data, size_t len)
+{
+	ssize_t ret = write(tun_fd, data, len);
+	if (len!=ret) {
+		fprintf(stderr, "write(tun) incomplete: %m\n");
 	}
-	cJSON_AddStringToObject(conf, "config_file", config_file);
+}
 
-	signal(SIGHUP, hup_handler);
+int
+main(int argc, char **argv)
+{
+	char tun_name[IFNAMSIZ];
+	char cmdline[CMDSIZE];
+	cJSON *conf;
+	const cJSON *routes;
+	const char *tun_local_addr, *tun_peer_addr, *default_route;
+	pthread_t tid_tun_reader;
 
-	tun_mode = conf_get_str("TunnelMode", "tun", conf);
-	if (strcmp(tun_mode, "tun") == 0) {
-		tun_local_addr = conf_get_str("TunnelLocalAddr", NULL, conf);
-		tun_peer_addr = conf_get_str("TunnelPeerAddr", NULL, conf);
-		if (tun_local_addr == NULL || tun_peer_addr == NULL) {
-			fprintf(stderr, "Must define TunnelLocalAddr and TunnelPeerAddr in config file!\n");
-			exit(1);
-		}
-
-		tun_name[0] = '\0';
-		tun_fd = tun_alloc(tun_name, IFF_TUN | IFF_NO_PI);
-		if (tun_fd < 0) {
-			perror("tun_alloc()");
-			exit(1);
-		}
-
-		shell("ip addr add dev %s %s peer %s", tun_name, tun_local_addr, tun_peer_addr);
-		shell("ip link set dev %s up", tun_name);
-	} else if (strcmp(tun_mode, "tap") == 0) {
-	} else {
-		fprintf(stderr, "Tunnel mode %s not supported\n", tun_mode);
+	if (argc<2) {
+		fprintf(stderr, "Usage: %s CONFIG_FILE\n", argv[0]);
 		abort();
 	}
 
-	routes = conf_get("RoutePrefix", NULL, conf);
-	if (routes && routes->type == cJSON_Array) {
+	srand(getpid());
+
+	conf = cJSON_loadfile(argv[1]);
+	if (conf==NULL) {
+		fprintf(stderr, "Load config failed.\n");
+		exit(1);
+	}
+
+	const char *plugin_path;
+	plugin_path = cJSON_lookup_str(conf, ".Carrier.Module", NULL);
+	if (plugin_path==NULL) {
+		fprintf(stderr, "Undefined: .Carrier.Module\n");
+		abort();
+	}
+	fprintf(stderr, "Loading: %s\n", plugin_path);
+
+	carrier_handler = dlopen(plugin_path, RTLD_NOW);
+	if (carrier_handler==NULL) {
+		fprintf(stderr, "Open plugin %s failed: %s\n", plugin_path, dlerror());
+		exit(1);
+	}
+	carrier = dlsym(carrier_handler, "carrier_interface");
+	if (carrier==NULL) {
+		fprintf(stderr, "%s seems not a carrier plugin!\n", plugin_path);
+		exit(1);
+	}
+
+	carrier_ctx = carrier->init(cJSON_lookup_obj(conf, ".Carrier.Config", NULL));
+	if (carrier_ctx==NULL) {
+		fprintf(stderr, "Failed to init plugin!\n");
+		exit(1);
+	}
+	carrier->on_packet_receive(carrier_ctx, cb_recv);
+
+	fprintf(stderr, "Inited plugin: %s\n", carrier->name);
+
+	signal(SIGTERM, sig_exit);
+	signal(SIGINT, sig_exit);
+	signal(SIGQUIT, sig_exit);
+	signal(SIGHUP, hup_handler);
+
+	tun_local_addr = cJSON_lookup_str(conf, ".TunnelLocalAddr", NULL);
+	tun_peer_addr = cJSON_lookup_str(conf, ".TunnelPeerAddr", NULL);
+	if (tun_local_addr==NULL || tun_peer_addr==NULL) {
+		fprintf(stderr, "Must define TunnelLocalAddr and TunnelPeerAddr in config file!\n");
+		exit(1);
+	}
+
+	tun_name[0]='\0';
+	tun_fd = tun_alloc(tun_name);
+	if (tun_fd<0) {
+		perror("tun_alloc()");
+		exit(1);
+	}
+
+	snprintf(cmdline, CMDSIZE, "ip addr add dev %s %s peer %s", tun_name, tun_local_addr, tun_peer_addr);
+	shell(cmdline);
+	snprintf(cmdline, CMDSIZE, "ip link set dev %s up", tun_name);
+	shell(cmdline);
+
+	routes = cJSON_lookup_obj(conf, ".RoutePrefix", NULL);
+	if (routes && routes->type==cJSON_Array) {
 		int i;
-		for (i = 0; i < cJSON_GetArraySize(routes); ++i) {
+		for (i=0; i<cJSON_GetArraySize(routes); ++i) {
 			cJSON *entry;
 			entry = cJSON_GetArrayItem(routes, i);
 			if (entry->type == cJSON_String) {
-				shell("ip route add %s dev %s via %s", entry->valuestring, tun_name, tun_peer_addr);
+				snprintf(cmdline, CMDSIZE, "ip route add %s dev %s via %s", entry->valuestring, tun_name, tun_peer_addr);
+				shell(cmdline);
 			}
 		}
 	}
 
-	default_route = conf_get_str("DefaultRoute", NULL, conf);
-	if (default_route != NULL) {
-		shell("ip route add default dev %s table %s", tun_name, default_route);
+	default_route = cJSON_lookup_str(conf, ".DefaultRoute", NULL);
+	if (default_route!=NULL) {
+		snprintf(cmdline, CMDSIZE, "ip route add default dev %s table %s", tun_name, default_route);
+		shell(cmdline);
 	}
 
-	relay(tun_fd, conf);
+	pthread_create(&tid_tun_reader, NULL, thr_tun_reader, NULL);
+
+	pthread_join(tid_tun_reader, NULL);
+
+	carrier->destroy(carrier_ctx);
 
 	close(tun_fd);
 
 	return 0;
 }
+
