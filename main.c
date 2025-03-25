@@ -27,7 +27,7 @@
 #include "protocol.h"
 #include "relayer.h"
 
-int hup_notified=0;
+int hup_notified = 0;
 
 static char *config_file;
 
@@ -36,23 +36,24 @@ static void parse_args(int argc, char **argv)
 	int c;
 
 	do {
-		c=getopt(argc, argv, "c:");
+		c = getopt(argc, argv, "c:");
 		switch (c) {
-			case 'c':
-				config_file = optarg;
-				break;
-			default:
-				break;
+		case 'c':
+			config_file = optarg;
+			break;
+		default:
+			break;
 		}
-	} while (c!=-1);
+	} while (c != -1);
 
-	if (config_file==NULL) {
+	if (config_file == NULL) {
 		fprintf(stderr, "Usage: %s -c CONFIG_FILE\n", argv[0]);
 		abort();
 	}
 }
 
-static int tun_alloc(char *dev, int flags) {
+static int tun_alloc(char *dev, int flags)
+{
 
 	struct ifreq ifr;
 	int fd, err;
@@ -66,14 +67,14 @@ static int tun_alloc(char *dev, int flags) {
 	 */
 
 	/* open the clone device */
-	if( (fd = open(clonedev, O_RDWR)) < 0 ) {
+	if ((fd = open(clonedev, O_RDWR)) < 0) {
 		return fd;
 	}
 
 	/* preparation of the struct ifr, of type "struct ifreq" */
 	memset(&ifr, 0, sizeof(ifr));
 
-	ifr.ifr_flags = flags;   /* IFF_TUN or IFF_TAP, plus maybe IFF_NO_PI */
+	ifr.ifr_flags = flags;	/* IFF_TUN or IFF_TAP, plus maybe IFF_NO_PI */
 
 	if (*dev) {
 		/* if a device name was specified, put it in the structure; otherwise,
@@ -83,7 +84,7 @@ static int tun_alloc(char *dev, int flags) {
 	}
 
 	/* try to create the device */
-	if ( (err = ioctl(fd, TUNSETIFF, (void *) &ifr)) < 0 ) {
+	if ((err = ioctl(fd, TUNSETIFF, (void *)&ifr)) < 0) {
 		close(fd);
 		return err;
 	}
@@ -101,7 +102,7 @@ static int tun_alloc(char *dev, int flags) {
 
 static int shell(const char *fmt, ...)
 {
-	const size_t max_cmdlen = 128*1024;
+	const size_t max_cmdlen = 128 * 1024;
 	int ret;
 	char *cmd;
 
@@ -109,14 +110,14 @@ static int shell(const char *fmt, ...)
 	{
 		va_list al;
 		va_start(al, fmt);
-		vsnprintf(cmd, max_cmdlen-1, fmt, al);
-		cmd[max_cmdlen-1] = 0;
+		vsnprintf(cmd, max_cmdlen - 1, fmt, al);
+		cmd[max_cmdlen - 1] = 0;
 		va_end(al);
 	}
 
 	fprintf(stderr, "run: %s\n", cmd);
 	ret = system(cmd);
-	if (ret==-1) {
+	if (ret == -1) {
 		fprintf(stderr, "failed: %m.\n");
 	} else {
 		fprintf(stderr, "status=%d.\n", ret);
@@ -132,8 +133,7 @@ static void hup_handler(int s)
 
 #define	BUFSIZE	1024
 
-int
-main(int argc, char **argv)
+int main(int argc, char **argv)
 {
 	int tun_fd;
 	char tun_name[IFNAMSIZ];
@@ -145,7 +145,7 @@ main(int argc, char **argv)
 	srand(getpid());
 
 	conf = conf_load_file(config_file);
-	if (conf==NULL) {
+	if (conf == NULL) {
 		fprintf(stderr, "Load config failed.\n");
 		exit(1);
 	}
@@ -154,33 +154,33 @@ main(int argc, char **argv)
 	signal(SIGHUP, hup_handler);
 
 	tun_mode = conf_get_str("TunnelMode", "tun", conf);
-	if (strcmp(tun_mode, "tun")==0) {
+	if (strcmp(tun_mode, "tun") == 0) {
 		tun_local_addr = conf_get_str("TunnelLocalAddr", NULL, conf);
 		tun_peer_addr = conf_get_str("TunnelPeerAddr", NULL, conf);
-		if (tun_local_addr==NULL || tun_peer_addr==NULL) {
+		if (tun_local_addr == NULL || tun_peer_addr == NULL) {
 			fprintf(stderr, "Must define TunnelLocalAddr and TunnelPeerAddr in config file!\n");
 			exit(1);
 		}
 
-		tun_name[0]='\0';
+		tun_name[0] = '\0';
 		tun_fd = tun_alloc(tun_name, IFF_TUN | IFF_NO_PI);
-		if (tun_fd<0) {
+		if (tun_fd < 0) {
 			perror("tun_alloc()");
 			exit(1);
 		}
 
 		shell("ip addr add dev %s %s peer %s", tun_name, tun_local_addr, tun_peer_addr);
 		shell("ip link set dev %s up", tun_name);
-	} else if (strcmp(tun_mode, "tap")==0) {
+	} else if (strcmp(tun_mode, "tap") == 0) {
 	} else {
 		fprintf(stderr, "Tunnel mode %s not supported\n", tun_mode);
 		abort();
 	}
 
 	routes = conf_get("RoutePrefix", NULL, conf);
-	if (routes && routes->type==cJSON_Array) {
+	if (routes && routes->type == cJSON_Array) {
 		int i;
-		for (i=0; i<cJSON_GetArraySize(routes); ++i) {
+		for (i = 0; i < cJSON_GetArraySize(routes); ++i) {
 			cJSON *entry;
 			entry = cJSON_GetArrayItem(routes, i);
 			if (entry->type == cJSON_String) {
@@ -190,7 +190,7 @@ main(int argc, char **argv)
 	}
 
 	default_route = conf_get_str("DefaultRoute", NULL, conf);
-	if (default_route!=NULL) {
+	if (default_route != NULL) {
 		shell("ip route add default dev %s table %s", tun_name, default_route);
 	}
 
@@ -200,4 +200,3 @@ main(int argc, char **argv)
 
 	return 0;
 }
-

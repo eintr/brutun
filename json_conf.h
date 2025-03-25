@@ -26,7 +26,7 @@ int conf_delete(cJSON *);
 #define global_conf_delete() conf_delete(global_config)
 
 #if 0
-cJSON *conf_combine(cJSON *to, cJSON *from);
+cJSON *conf_combine(cJSON * to, cJSON * from);
 #endif
 
 cJSON *conf_get(const char *, cJSON *, const cJSON *);
@@ -40,4 +40,3 @@ const char *conf_get_str(const char *, const char *, const cJSON *);
 #define	global_conf_get_str(N, D) conf_get_str(N, D, global_config)
 
 #endif
-
