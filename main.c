@@ -8,6 +8,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <string.h>
@@ -82,10 +83,20 @@ static int tun_alloc(char *dev) {
 	return fd;
 }
 
-static int shell(const char *cmd)
-{
-	int ret;
+static int shell(const char *fmt, ...)
+ {
+       const size_t max_cmdlen = 128*1024;
+       int ret;
+       char *cmd;
 
+       cmd = malloc(max_cmdlen);
+       {
+               va_list al;
+               va_start(al, fmt);
+               vsnprintf(cmd, max_cmdlen-1, fmt, al);
+               cmd[max_cmdlen-1] = 0;
+               va_end(al);
+       }
 	fprintf(stderr, "run: %s  ...  ", cmd);
 	ret = system(cmd);
 	if (ret==-1) {
@@ -133,7 +144,6 @@ int
 main(int argc, char **argv)
 {
 	char tun_name[IFNAMSIZ];
-	char cmdline[CMDSIZE];
 	cJSON *conf;
 	const cJSON *routes;
 	const char *tun_local_addr, *tun_peer_addr, *default_route;
@@ -199,10 +209,8 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
-	snprintf(cmdline, CMDSIZE, "ip addr add dev %s %s peer %s", tun_name, tun_local_addr, tun_peer_addr);
-	shell(cmdline);
-	snprintf(cmdline, CMDSIZE, "ip link set dev %s up", tun_name);
-	shell(cmdline);
+	shell("ip addr add dev %s %s peer %s", tun_name, tun_local_addr, tun_peer_addr);
+	shell("ip link set dev %s up", tun_name);
 
 	routes = cJSON_lookup_obj(conf, ".RoutePrefix", NULL);
 	if (routes && routes->type==cJSON_Array) {
@@ -211,16 +219,14 @@ main(int argc, char **argv)
 			cJSON *entry;
 			entry = cJSON_GetArrayItem(routes, i);
 			if (entry->type == cJSON_String) {
-				snprintf(cmdline, CMDSIZE, "ip route add %s dev %s via %s", entry->valuestring, tun_name, tun_peer_addr);
-				shell(cmdline);
+				shell("ip route add %s dev %s via %s", entry->valuestring, tun_name, tun_peer_addr);
 			}
 		}
 	}
 
 	default_route = cJSON_lookup_str(conf, ".DefaultRoute", NULL);
 	if (default_route!=NULL) {
-		snprintf(cmdline, CMDSIZE, "ip route add default dev %s table %s", tun_name, default_route);
-		shell(cmdline);
+		shell("ip route add default dev %s table %s", tun_name, default_route);
 	}
 
 	pthread_create(&tid_tun_reader, NULL, thr_tun_reader, NULL);
