@@ -281,7 +281,7 @@ static void *thr_rcv(void *p)
 			pfd[i].events = POLLIN;
 		}
 
-		while (poll(pfd, ctx->nr_sockets, -1)<=0) {
+		while (poll(pfd, ctx->nr_sockets, 100)<0) {
 			perror("poll()");
 		}
 		for (i=0; i<ctx->nr_sockets; ++i) {

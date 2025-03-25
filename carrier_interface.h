@@ -3,6 +3,8 @@
 
 #include "cJSON.h"
 
+#define	SENDPACKET_POINSON	(const void*)1
+
 typedef struct {
 	const char *name;
 	void *(*init)(const cJSON *);
@@ -11,6 +13,6 @@ typedef struct {
 	void (*destroy)(void *);
 } carrier_interface_t;
 
-extern int hup_notified;
+extern volatile int hup_notified;
 
 #endif

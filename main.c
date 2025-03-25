@@ -20,6 +20,7 @@
 #include <sys/socket.h>
 #include <dlfcn.h>
 #include <pthread.h>
+#include <poll.h>
 
 #include <linux/if.h>
 #include <linux/if_tun.h>
@@ -27,10 +28,7 @@
 #include "util_cjson.h"
 #include "carrier_interface.h"
 
-#define	CMDSIZE	1024
-#define	PKTSIZE	65536
-
-int hup_notified=0;
+volatile int hup_notified=0;
 
 static carrier_interface_t *carrier = NULL;
 static void *carrier_handler=NULL;
@@ -110,17 +108,26 @@ static int shell(const char *fmt, ...)
 
 static void *thr_tun_reader(void *p)
 {
+#define PKTSIZE 65536
 	char buffer[PKTSIZE];
 	int len;
+	struct pollfd pfd;
 
+	pfd.fd = tun_fd;
+	pfd.events = POLLIN;
 	while(loop) {
-		len = read(tun_fd, buffer, PKTSIZE);
-		if (len<=0) {
-			continue;
+		pfd.revents = 0;
+		poll(&pfd, 1, 100);
+		if (pfd.revents & POLLIN) {
+			len = read(tun_fd, buffer, PKTSIZE);
+			if (len<=0) {
+				continue;
+			}
+			carrier->send_packet(carrier_ctx, buffer, len);
 		}
-		carrier->send_packet(carrier_ctx, buffer, len);
 	}
 	pthread_exit(NULL);
+#undef PKTSIZE
 }
 
 static void hup_handler(int s)
