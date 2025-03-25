@@ -6,6 +6,7 @@
  *  That's all.
  ********************************************************/
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -173,7 +174,7 @@ main(int argc, char **argv)
 		fprintf(stderr, "Loading: %s\n", plugin_path);
 
 		cwd = get_current_dir_name();
-		chdir(PLUGINDIR);
+		assert(chdir(PLUGINDIR)==0);
 		carrier_handler = dlopen(plugin_path, RTLD_NOW);
 		if (carrier_handler==NULL) {
 			fprintf(stderr, "Open plugin %s failed: %s\n", plugin_path, dlerror());
@@ -184,7 +185,7 @@ main(int argc, char **argv)
 			fprintf(stderr, "%s seems not a carrier plugin!\n", plugin_path);
 			exit(1);
 		}
-		chdir(cwd);
+		assert(chdir(cwd)==0);
 		free(cwd);
 	}
 
