@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <stdarg.h>
 #include <fcntl.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -98,17 +99,29 @@ static int tun_alloc(char *dev, int flags) {
 	return fd;
 }
 
-static int shell(const char *cmd)
+static int shell(const char *fmt, ...)
 {
+	const size_t max_cmdlen = 128*1024;
 	int ret;
+	char *cmd;
 
-	fprintf(stderr, "run: %s  ...  ", cmd);
+	cmd = malloc(max_cmdlen);
+	{
+		va_list al;
+		va_start(al, fmt);
+		vsnprintf(cmd, max_cmdlen-1, fmt, al);
+		cmd[max_cmdlen-1] = 0;
+		va_end(al);
+	}
+
+	fprintf(stderr, "run: %s\n", cmd);
 	ret = system(cmd);
 	if (ret==-1) {
 		fprintf(stderr, "failed: %m.\n");
 	} else {
 		fprintf(stderr, "status=%d.\n", ret);
 	}
+	free(cmd);
 	return ret;
 }
 
@@ -124,9 +137,8 @@ main(int argc, char **argv)
 {
 	int tun_fd;
 	char tun_name[IFNAMSIZ];
-	char cmdline[BUFSIZE];
 	cJSON *conf, *routes;
-	const char *tun_local_addr, *tun_peer_addr, *default_route;
+	const char *tun_mode, *tun_local_addr, *tun_peer_addr, *default_route;
 
 	parse_args(argc, argv);
 
@@ -141,24 +153,29 @@ main(int argc, char **argv)
 
 	signal(SIGHUP, hup_handler);
 
-	tun_local_addr = conf_get_str("TunnelLocalAddr", NULL, conf);
-	tun_peer_addr = conf_get_str("TunnelPeerAddr", NULL, conf);
-	if (tun_local_addr==NULL || tun_peer_addr==NULL) {
-		fprintf(stderr, "Must define TunnelLocalAddr and TunnelPeerAddr in config file!\n");
-		exit(1);
-	}
+	tun_mode = conf_get_str("TunnelMode", "tun", conf);
+	if (strcmp(tun_mode, "tun")==0) {
+		tun_local_addr = conf_get_str("TunnelLocalAddr", NULL, conf);
+		tun_peer_addr = conf_get_str("TunnelPeerAddr", NULL, conf);
+		if (tun_local_addr==NULL || tun_peer_addr==NULL) {
+			fprintf(stderr, "Must define TunnelLocalAddr and TunnelPeerAddr in config file!\n");
+			exit(1);
+		}
 
-	tun_name[0]='\0';
-	tun_fd = tun_alloc(tun_name, IFF_TUN | IFF_NO_PI);
-	if (tun_fd<0) {
-		perror("tun_alloc()");
-		exit(1);
-	}
+		tun_name[0]='\0';
+		tun_fd = tun_alloc(tun_name, IFF_TUN | IFF_NO_PI);
+		if (tun_fd<0) {
+			perror("tun_alloc()");
+			exit(1);
+		}
 
-	snprintf(cmdline, BUFSIZE, "ip addr add dev %s %s peer %s", tun_name, tun_local_addr, tun_peer_addr);
-	shell(cmdline);
-	snprintf(cmdline, BUFSIZE, "ip link set dev %s up", tun_name);
-	shell(cmdline);
+		shell("ip addr add dev %s %s peer %s", tun_name, tun_local_addr, tun_peer_addr);
+		shell("ip link set dev %s up", tun_name);
+	} else if (strcmp(tun_mode, "tap")==0) {
+	} else {
+		fprintf(stderr, "Tunnel mode %s not supported\n", tun_mode);
+		abort();
+	}
 
 	routes = conf_get("RoutePrefix", NULL, conf);
 	if (routes && routes->type==cJSON_Array) {
@@ -167,16 +184,14 @@ main(int argc, char **argv)
 			cJSON *entry;
 			entry = cJSON_GetArrayItem(routes, i);
 			if (entry->type == cJSON_String) {
-				snprintf(cmdline, BUFSIZE, "ip route add %s dev %s via %s", entry->valuestring, tun_name, tun_peer_addr);
-				shell(cmdline);
+				shell("ip route add %s dev %s via %s", entry->valuestring, tun_name, tun_peer_addr);
 			}
 		}
 	}
 
 	default_route = conf_get_str("DefaultRoute", NULL, conf);
 	if (default_route!=NULL) {
-		snprintf(cmdline, BUFSIZE, "ip route add default dev %s table %s", tun_name, default_route);
-		shell(cmdline);
+		shell("ip route add default dev %s table %s", tun_name, default_route);
 	}
 
 	relay(tun_fd, conf);
