@@ -162,23 +162,30 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
-	const char *plugin_path;
-	plugin_path = cJSON_lookup_str(conf, ".Carrier.Module", NULL);
-	if (plugin_path==NULL) {
-		fprintf(stderr, "Undefined: .Carrier.Module\n");
-		abort();
-	}
-	fprintf(stderr, "Loading: %s\n", plugin_path);
+	{
+		const char *plugin_path;
+		char *cwd;
+		plugin_path = cJSON_lookup_str(conf, ".Carrier.Module", NULL);
+		if (plugin_path==NULL) {
+			fprintf(stderr, "Undefined: .Carrier.Module\n");
+			abort();
+		}
+		fprintf(stderr, "Loading: %s\n", plugin_path);
 
-	carrier_handler = dlopen(plugin_path, RTLD_NOW);
-	if (carrier_handler==NULL) {
-		fprintf(stderr, "Open plugin %s failed: %s\n", plugin_path, dlerror());
-		exit(1);
-	}
-	carrier = dlsym(carrier_handler, "carrier_interface");
-	if (carrier==NULL) {
-		fprintf(stderr, "%s seems not a carrier plugin!\n", plugin_path);
-		exit(1);
+		cwd = get_current_dir_name();
+		chdir(PLUGINDIR);
+		carrier_handler = dlopen(plugin_path, RTLD_NOW);
+		if (carrier_handler==NULL) {
+			fprintf(stderr, "Open plugin %s failed: %s\n", plugin_path, dlerror());
+			exit(1);
+		}
+		carrier = dlsym(carrier_handler, "carrier_interface");
+		if (carrier==NULL) {
+			fprintf(stderr, "%s seems not a carrier plugin!\n", plugin_path);
+			exit(1);
+		}
+		chdir(cwd);
+		free(cwd);
 	}
 
 	carrier_ctx = carrier->init(cJSON_lookup_obj(conf, ".Carrier.Config", NULL));
