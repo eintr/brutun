@@ -36,49 +36,24 @@ static void *carrier_ctx=NULL;
 static int loop=1;
 static int tun_fd=-1;
 
-static int tun_alloc(char *dev) {
-
+static int tun_alloc(char *dev, int tap) {
 	struct ifreq ifr;
-	int fd, err;
+	int fd;
 
-	/* Arguments taken by the function:
-	 *
-	 * char *dev: the name of an interface (or '\0'). MUST have enough
-	 *   space to hold the interface name if '\0' is passed
-	 * int flags: interface flags (eg, IFF_TUN etc.)
-	 */
-
-	/* open the clone device */
 	if( (fd = open("/dev/net/tun", O_RDWR)) < 0 ) {
 		return fd;
 	}
-
-	/* preparation of the struct ifr, of type "struct ifreq" */
 	memset(&ifr, 0, sizeof(ifr));
-
-	ifr.ifr_flags = IFF_TUN | IFF_NO_PI;   /* IFF_TUN or IFF_TAP, plus maybe IFF_NO_PI */
-
+	if (tap==0) {
+		ifr.ifr_flags = IFF_TUN | IFF_NO_PI;
+	} else {
+		ifr.ifr_flags = IFF_TAP | IFF_NO_PI;
+	}
 	if (*dev) {
-		/* if a device name was specified, put it in the structure; otherwise,
-		 * the kernel will try to allocate the "next" device of the
-		 * specified type */
 		strncpy(ifr.ifr_name, dev, IFNAMSIZ);
 	}
-
-	/* try to create the device */
-	if ( (err = ioctl(fd, TUNSETIFF, (void *) &ifr)) < 0 ) {
-		close(fd);
-		return err;
-	}
-
-	/* if the operation was successful, write back the name of the
-	 * interface to the variable "dev", so the caller can know
-	 * it. Note that the caller MUST reserve space in *dev (see calling
-	 * code below) */
+	assert(ioctl(fd, TUNSETIFF, (void *) &ifr)==0);
 	strcpy(dev, ifr.ifr_name);
-
-	/* this is the special file descriptor that the caller will use to talk
-	 * with the virtual interface */
 	return fd;
 }
 
@@ -154,7 +129,6 @@ main(int argc, char **argv)
 	char tun_name[IFNAMSIZ];
 	cJSON *conf;
 	const cJSON *routes;
-	const char *tun_local_addr, *tun_peer_addr, *default_route;
 	pthread_t tid_tun_reader;
 
 	if (argc<2) {
@@ -210,39 +184,79 @@ main(int argc, char **argv)
 	signal(SIGQUIT, sig_exit);
 	signal(SIGHUP, hup_handler);
 
-	tun_local_addr = cJSON_lookup_str(conf, ".TunnelLocalAddr", NULL);
-	tun_peer_addr = cJSON_lookup_str(conf, ".TunnelPeerAddr", NULL);
-	if (tun_local_addr==NULL || tun_peer_addr==NULL) {
-		fprintf(stderr, "Must define TunnelLocalAddr and TunnelPeerAddr in config file!\n");
-		exit(1);
-	}
-
-	tun_name[0]='\0';
-	tun_fd = tun_alloc(tun_name);
-	if (tun_fd<0) {
-		perror("tun_alloc()");
-		exit(1);
-	}
-
-	shell("ip addr add dev %s %s peer %s", tun_name, tun_local_addr, tun_peer_addr);
-	shell("ip link set dev %s up", tun_name);
-
-	routes = cJSON_lookup_obj(conf, ".RoutePrefix", NULL);
-	if (routes && routes->type==cJSON_Array) {
-		int i;
-		for (i=0; i<cJSON_GetArraySize(routes); ++i) {
-			cJSON *entry;
-			entry = cJSON_GetArrayItem(routes, i);
-			if (entry->type == cJSON_String) {
-				shell("ip route add %s dev %s via %s", entry->valuestring, tun_name, tun_peer_addr);
-			}
+	{
+		const char *name;
+		name = cJSON_lookup_str(conf, ".IFName", NULL);
+		if (name==NULL) {
+			tun_name[0]='\0';
+		} else {
+			strncpy(tun_name, name, IFNAMSIZ);
+			tun_name[IFNAMSIZ-1] = 0;
 		}
 	}
 
-	default_route = cJSON_lookup_str(conf, ".DefaultRoute", NULL);
-	if (default_route!=NULL) {
-		shell("ip route add default dev %s table %s", tun_name, default_route);
+	{
+		const char *mode;
+		mode = cJSON_lookup_str(conf, ".Mode", "tun");
+		if (strcmp(mode, "tun")==0) {
+			const char *tun_local_addr, *tun_peer_addr, *default_route;
+
+			tun_fd = tun_alloc(tun_name, 0);
+			if (tun_fd<0) {
+				perror("tun_alloc()");
+				exit(1);
+			}
+
+			tun_local_addr = cJSON_lookup_str(conf, ".LocalAddr", NULL);
+			tun_peer_addr = cJSON_lookup_str(conf, ".PeerAddr", NULL);
+			if (tun_local_addr==NULL || tun_peer_addr==NULL) {
+				fprintf(stderr, "Must define TunnelLocalAddr and TunnelPeerAddr in config file!\n");
+				exit(1);
+			}
+
+
+
+			shell("ip addr add dev %s %s peer %s", tun_name, tun_local_addr, tun_peer_addr);
+
+			routes = cJSON_lookup_obj(conf, ".RoutePrefix", NULL);
+			if (routes && routes->type==cJSON_Array) {
+				int i;
+				for (i=0; i<cJSON_GetArraySize(routes); ++i) {
+					cJSON *entry;
+					entry = cJSON_GetArrayItem(routes, i);
+					if (entry->type == cJSON_String) {
+						shell("ip route add %s dev %s via %s", entry->valuestring, tun_name, tun_peer_addr);
+					}
+				}
+			}
+
+			default_route = cJSON_lookup_str(conf, ".DefaultOfTable", NULL);
+			if (default_route!=NULL) {
+				shell("ip route add default dev %s table %s", tun_name, default_route);
+			}
+		} else if (strcmp(mode, "tap")==0) {
+			const char *join_bridge;
+			tun_name[0]='\0';
+			tun_fd = tun_alloc(tun_name, 1);
+			assert(tun_fd>=0);
+
+			join_bridge = cJSON_lookup_str(conf, ".JoinBridge", NULL);
+			if (join_bridge!=NULL) {
+				shell("ip li set dev %s master %s", tun_name, join_bridge);
+			} else {
+				const char *addr;
+				addr = cJSON_lookup_str(conf, ".LocalAddr", NULL);
+				if (addr!=NULL) {
+					shell("ip addr add dev %s %s", tun_name, addr);
+				}
+			}
+		} else {
+			fprintf(stderr, "Tunnel mode %s not supported\n", mode);
+			abort();
+		}
 	}
+
+	shell("ip link set dev %s up", tun_name);
 
 	pthread_create(&tid_tun_reader, NULL, thr_tun_reader, NULL);
 
