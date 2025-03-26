@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 enum {
-	CODE_DATA=0,
+	CODE_DATA = 0,
 	CODE_HELLO,
 	CODE_PING,
 	CODE_PONG,
@@ -36,4 +36,3 @@ struct frame_st {
 };
 
 #endif
-

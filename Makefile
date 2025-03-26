@@ -1,13 +1,13 @@
 include config.mk
 
-CFLAGS+= -I. -pthread -Wall -D_GNU_SOURCE -O3
+CFLAGS+= -I. -pthread -Wall -D_GNU_SOURCE -O0 -g
 
 #LDFLAGS+=-lpthread -lm -lssl -lcrypto -lrt -ldl
 LDFLAGS+=-lpthread -lm -ldl -rdynamic
 
 SERVERFNAME=brutun
 
-sources=main.c util_time.c cryp.c util_cjson.c cJSON.c
+sources=main.c tunnel.c carrier.c util_time.c cryp.c util_cjson.c cJSON.c
 
 objects=$(sources:.c=.o)
 

@@ -9,7 +9,7 @@
 
 #define CJSON_INCLUDE_PREFIX "IncludeJSON:"
 
-extern void reg_util_cjson_printf_handler(void) __attribute__ ((constructor));
+extern void reg_util_cjson_printf_handler(void) __attribute__((constructor));
 
 static char *include_value(char *s)
 {
@@ -24,7 +24,7 @@ static char *include_value(char *s)
 	return NULL;
 }
 
-static void process_include(cJSON * j)
+static void process_include(cJSON *j)
 {
 	if (j->type == cJSON_Object) {
 		cJSON *current, *next;
@@ -76,7 +76,7 @@ cJSON *cJSON_loadfile(const char *fname)
 	return root;
 }
 
-const cJSON *cJSON_lookup_obj(const cJSON * j, const char *path, const cJSON * deflt)
+const cJSON *cJSON_lookup_obj(const cJSON *j, const char *path, const cJSON *deflt)
 {
 	//fprintf(stderr, "Lookup: %s in %s\n", path, cJSON_PrintUnformatted(j));
 	if (path[0] == '.') {
@@ -148,7 +148,7 @@ const cJSON *cJSON_lookup_obj(const cJSON * j, const char *path, const cJSON * d
 	}
 }
 
-int cJSON_lookup_int(const cJSON * self, const char *path, int deflt)
+int cJSON_lookup_int(const cJSON *self, const char *path, int deflt)
 {
 	const cJSON *obj;
 	obj = cJSON_lookup_obj(self, path, NULL);
@@ -161,7 +161,7 @@ int cJSON_lookup_int(const cJSON * self, const char *path, int deflt)
 	return obj->valueint;
 }
 
-double cJSON_lookup_double(const cJSON * self, const char *path, double deflt)
+double cJSON_lookup_double(const cJSON *self, const char *path, double deflt)
 {
 	const cJSON *obj;
 	obj = cJSON_lookup_obj(self, path, NULL);
@@ -174,7 +174,7 @@ double cJSON_lookup_double(const cJSON * self, const char *path, double deflt)
 	return obj->valuedouble;
 }
 
-const char *cJSON_lookup_str(const cJSON * self, const char *path, const char *deflt)
+const char *cJSON_lookup_str(const cJSON *self, const char *path, const char *deflt)
 {
 	const cJSON *obj;
 	obj = cJSON_lookup_obj(self, path, NULL);
@@ -187,7 +187,7 @@ const char *cJSON_lookup_str(const cJSON * self, const char *path, const char *d
 	return obj->valuestring;
 }
 
-int cJSON_lookup_bool(const cJSON * self, const char *path, int deflt)
+int cJSON_lookup_bool(const cJSON *self, const char *path, int deflt)
 {
 	const cJSON *obj;
 	obj = cJSON_lookup_obj(self, path, NULL);
@@ -202,7 +202,7 @@ int cJSON_lookup_bool(const cJSON * self, const char *path, int deflt)
 	return deflt;
 }
 
-static int printf_handler(FILE * f, const struct printf_info *info, const void *const *args)
+static int printf_handler(FILE *f, const struct printf_info *info, const void *const *args)
 {
 	const cJSON *j;
 	char *tmp;
@@ -246,7 +246,7 @@ static int test_loadfile(void)
 	PASS_WHEN(c != NULL);
 }
 
-static int test_printf(cJSON * c)
+static int test_printf(cJSON *c)
 {
 	char *expected_result = "{\"key_str\":\"value_string\",\"key_int\":42,\"key_double\":3.1415927,\"key_true\":true,\"key_false\":false,\"key_null\":null,\"Array1\":[0,1,2,3,4,5,6,7,8],\"Map01\":{\"key_str\":\"value_string\",\"key_int\":42,\"key_double\":3.1415927,\"key_true\":true,\"key_false\":false,\"key_null\":null},\"IncludeFile\":{\"ikey\":\"ivalue\"},\"Array2\":[{\"Array\":[\"str0\",\"str1\",\"str2\",\"str3\"]},{\"A.r.r.a.y\":[0,1,2,3]}],\"Array3\":[[\"str00\",\"str01\",\"str02\",\"str03\"],[\"str10\",\"str11\",\"str12\",\"str13\"],[\"str20\",\"str21\",\"str22\",\"str23\"],[\"str30\",\"str31\",\"str32\",\"str33\"]],\"Steps.Per.Round\":20000,\"Jbus\":{\"Enabled\":true}}";
 	char result[1024];
@@ -255,12 +255,12 @@ static int test_printf(cJSON * c)
 	PASS_WHEN(strcmp(result, expected_result) == 0);
 }
 
-static int test_loadfile_include(cJSON * c)
+static int test_loadfile_include(cJSON *c)
 {
 	PASS_WHEN(strcmp(cJSON_lookup_str(c, ".IncludeFile.ikey", ""), "ivalue") == 0);
 }
 
-static int test_simple_key_map_get_obj(cJSON * jc)
+static int test_simple_key_map_get_obj(cJSON *jc)
 {
 	const cJSON *result;
 
@@ -268,67 +268,67 @@ static int test_simple_key_map_get_obj(cJSON * jc)
 	PASS_WHEN(result == cJSON_GetObjectItem(jc, "Map01"));
 }
 
-static int test_simple_key_map_get_int(cJSON * c)
+static int test_simple_key_map_get_int(cJSON *c)
 {
 	PASS_WHEN(cJSON_lookup_int(c, ".key_int", -1) == 42);
 }
 
-static int test_simple_key_map_get_str(cJSON * c)
+static int test_simple_key_map_get_str(cJSON *c)
 {
 	PASS_WHEN(strcmp(cJSON_lookup_str(c, ".key_str", ""), "value_string") == 0);
 }
 
-static int test_simple_key_map_get_true(cJSON * c)
+static int test_simple_key_map_get_true(cJSON *c)
 {
 	PASS_WHEN(cJSON_lookup_bool(c, ".key_true", 0));
 }
 
-static int test_simple_key_map_get_false(cJSON * c)
+static int test_simple_key_map_get_false(cJSON *c)
 {
 	PASS_WHEN(!cJSON_lookup_bool(c, ".key_false", 1));
 }
 
-static int test_simple_key_map_get_false2(cJSON * c)
+static int test_simple_key_map_get_false2(cJSON *c)
 {
 	PASS_WHEN(cJSON_lookup_bool(c, ".Jbus.Enabled", 0));
 }
 
-static int test_simple_key_map_get_null(cJSON * c)
+static int test_simple_key_map_get_null(cJSON *c)
 {
 }
 
-static int test_simple_array_get_elm(cJSON * c)
+static int test_simple_array_get_elm(cJSON *c)
 {
 	PASS_WHEN(cJSON_lookup_int(c, ".Array1[1]", -1) == 1 && cJSON_lookup_int(c, ".Array1[4]", -1) == 4);
 }
 
-static int test_simple_key_escape(cJSON * c)
+static int test_simple_key_escape(cJSON *c)
 {
 	PASS_WHEN(cJSON_lookup_int(c, ".Steps\\.Per\\.Round", -1) == 20000);
 }
 
-static int test_simple_complex_key(cJSON * c)
+static int test_simple_complex_key(cJSON *c)
 {
 	PASS_WHEN(cJSON_lookup_int(c, ".Array2[1].A\\.r\\.r\\.a\\.y[3]", -1) == 3);
 }
 
-static int test_torture_map_key_404(cJSON * c)
+static int test_torture_map_key_404(cJSON *c)
 {
 	PASS_WHEN(cJSON_lookup_int(c, ".no_such_key[1].no_such_key_either", -1)
 		  == -1);
 }
 
-static int test_torture_array_currupt_sub(cJSON * c)
+static int test_torture_array_currupt_sub(cJSON *c)
 {
 	PASS_WHEN(cJSON_lookup_int(c, ".Array1[3", -1) == -1);
 }
 
-static int test_torture_array_nondigit_sub(cJSON * c)
+static int test_torture_array_nondigit_sub(cJSON *c)
 {
 	PASS_WHEN(cJSON_lookup_int(c, ".Array1[X]", -1) == -1);
 }
 
-static int test_torture_array_overflow_sub(cJSON * c)
+static int test_torture_array_overflow_sub(cJSON *c)
 {
 	PASS_WHEN(cJSON_lookup_int(c, ".Array1[9]", -1) == -1);
 }

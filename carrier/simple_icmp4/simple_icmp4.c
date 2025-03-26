@@ -35,7 +35,7 @@ struct pkt_st {
 	uint8_t magic[8];
 	uint16_t len;
 	uint8_t data[];
-}__attribute__((packed));
+} __attribute__((packed));
 
 union pkt_buf {
 	char buffer[BUFSIZE];
@@ -44,10 +44,9 @@ union pkt_buf {
 
 #define	htonu64(X)	ntohu64(X)
 
-static void *thr_rcv(void*);
+static void *thr_rcv(void *);
 
-static unsigned short
-in_cksum(const unsigned short *addr, register int len, unsigned short csum)
+static unsigned short in_cksum(const unsigned short *addr, register int len, unsigned short csum)
 {
 	register int nleft = len;
 	const unsigned short *w = addr;
@@ -60,21 +59,21 @@ in_cksum(const unsigned short *addr, register int len, unsigned short csum)
 	 *  back all the carry bits from the top 16 bits into the lower
 	 *  16 bits.
 	 */
-	while (nleft > 1)  {
+	while (nleft > 1) {
 		sum += *w++;
 		nleft -= 2;
 	}
 
 	/* mop up an odd byte, if necessary */
 	if (nleft == 1)
-		sum += (*(unsigned char *)w); /* le16toh() may be unavailable on old systems */
+		sum += (*(unsigned char *)w);	/* le16toh() may be unavailable on old systems */
 
 	/*
 	 * add back carry outs from top 16 bits to low 16 bits
 	 */
 	sum = (sum >> 16) + (sum & 0xffff);	/* add hi 16 to low 16 */
-	sum += (sum >> 16);			/* add carry */
-	answer = ~sum;				/* truncate to 16 bits */
+	sum += (sum >> 16);	/* add carry */
+	answer = ~sum;		/* truncate to 16 bits */
 	return (answer);
 }
 
@@ -104,7 +103,7 @@ static int open_socket(void)
 	struct sockaddr_in local_addr;
 
 	sd = socket(PF_INET, SOCK_RAW, IPPROTO_ICMP);
-	if (sd<0) {
+	if (sd < 0) {
 		perror("socket()");
 		abort();
 	}
@@ -112,7 +111,7 @@ static int open_socket(void)
 	local_addr.sin_family = PF_INET;
 	inet_pton(AF_INET, "0.0.0.0", &local_addr.sin_addr);
 	local_addr.sin_port = 0;
-	if (bind(sd, (void*)&local_addr, sizeof(local_addr))<0) {
+	if (bind(sd, (void *)&local_addr, sizeof(local_addr)) < 0) {
 		abort();
 	}
 	return sd;
@@ -127,7 +126,7 @@ struct context_st {
 	socklen_t peer_addr_len;
 	int loop;
 
-	void(*on_recv)(const void*, size_t);
+	void (*on_recv)(const void *, size_t);
 
 	int *ports;
 	int socket;
@@ -146,11 +145,11 @@ static void *mod_init(const cJSON *conf)
 	ctx = malloc(sizeof(*ctx));
 	magic = strdup(cJSON_lookup_str(conf, ".MagicWord", "Brutun2"));
 	memset(ctx->magic, 0, 8);
-	strncpy((void*)ctx->magic, magic, 8);
+	strncpy((void *)ctx->magic, magic, 8);
 	fprintf(stderr, "Magic=%s\n", magic);
 
 	remote_ip = cJSON_lookup_str(conf, ".RemoteAddress", NULL);
-	if (remote_ip!=NULL) {
+	if (remote_ip != NULL) {
 		ctx->peer_addr.sin_family = PF_INET;
 		inet_pton(PF_INET, remote_ip, &ctx->peer_addr.sin_addr);
 		ctx->peer_addr.sin_port = htons(remote_port);
@@ -191,35 +190,35 @@ static int mod_send_packet(void *p, const void *data, size_t len)
 	int i;
 	union pkt_buf ubuf;
 
-	if (len>65535) {
+	if (len > 65535) {
 		fprintf(stderr, "packet size too big: %d, drop\n", (int)len);
 		return -1;
 	}
 
-	if (ctx->peer_addr_len==0) {
+	if (ctx->peer_addr_len == 0) {
 		fprintf(stderr, "Peer address not discovered, drop\n");
 		return -1;
 	}
 
-	*(uint64_t*)(&ubuf.pkt.magic) = *(uint64_t*)(ctx->magic);
+	*(uint64_t *) (&ubuf.pkt.magic) = *(uint64_t *) (ctx->magic);
 	ubuf.pkt.hdr.type = ICMP_ECHO;
 	ubuf.pkt.hdr.code = CODE_DATA;
 	ubuf.pkt.hdr.checksum = 0;
-	ubuf.pkt.hdr.un.echo.id = htonl((uint32_t)(serial>>32));
-	ubuf.pkt.hdr.un.echo.sequence = htonl((uint32_t)(serial&0xffffffff));
+	ubuf.pkt.hdr.un.echo.id = htonl((uint32_t) (serial >> 32));
+	ubuf.pkt.hdr.un.echo.sequence = htonl((uint32_t) (serial & 0xffffffff));
 	ubuf.pkt.len = htons(len);
 	memcpy(ubuf.pkt.data, data, len);
 
 	enc(ubuf.pkt.data, len, ctx->magic);
 
-	ubuf.pkt.hdr.checksum = in_cksum((void*)ubuf.buffer, sizeof(ubuf.pkt)+len, 0);
+	ubuf.pkt.hdr.checksum = in_cksum((void *)ubuf.buffer, sizeof(ubuf.pkt) + len, 0);
 
-	for (i=0; i<ctx->dup_level; ++i) {
+	for (i = 0; i < ctx->dup_level; ++i) {
 		ssize_t ret;
 		//fprintf(stderr, "sendto(%d, buf, %d, ...)\n", ctx->sockets[socket_id], (int)(sizeof(ubuf.pkt)+len));
-		ret = sendto(ctx->socket, ubuf.buffer, sizeof(ubuf.pkt)+len, 0, (void*)&ctx->peer_addr, ctx->peer_addr_len);
-		if (ret<0) {
-			if (errno==EINTR) {
+		ret = sendto(ctx->socket, ubuf.buffer, sizeof(ubuf.pkt) + len, 0, (void *)&ctx->peer_addr, ctx->peer_addr_len);
+		if (ret < 0) {
+			if (errno == EINTR) {
 				continue;
 			}
 		}
@@ -247,17 +246,17 @@ static void *thr_rcv(void *p)
 	pfd.events = POLLIN;
 
 	from_addr_len = sizeof(from_addr);
-	while(ctx->loop) {
-		if (poll(&pfd, 1, 500)<=0) {
+	while (ctx->loop) {
+		if (poll(&pfd, 1, 500) <= 0) {
 			continue;
 		}
 		uint64_t serial;
 		ssize_t len;
-		len = recvfrom(ctx->socket, &ipbuf, sizeof(ipbuf), 0, (void*)&from_addr, &from_addr_len);
-		if (len==0) {
+		len = recvfrom(ctx->socket, &ipbuf, sizeof(ipbuf), 0, (void *)&from_addr, &from_addr_len);
+		if (len == 0) {
 			continue;
 		}
-		if (memcmp(ipbuf.ubuf.pkt.magic, ctx->magic, 8)!=0) {
+		if (memcmp(ipbuf.ubuf.pkt.magic, ctx->magic, 8) != 0) {
 			//fprintf(stderr, "Ignored unknown source packet\n");
 			continue;
 		}
@@ -272,12 +271,11 @@ static void *thr_rcv(void *p)
 
 		data_len = ntohs(ipbuf.ubuf.pkt.len);
 
-		serial = (uint64_t)ntohl(ipbuf.ubuf.pkt.hdr.un.echo.sequence) + (((uint64_t)ntohl(ipbuf.ubuf.pkt.hdr.un.echo.id))<<32);
-		if (serial==serial_prev) {
+		serial = (uint64_t) ntohl(ipbuf.ubuf.pkt.hdr.un.echo.sequence) + (((uint64_t) ntohl(ipbuf.ubuf.pkt.hdr.un.echo.id)) << 32);
+		if (serial == serial_prev) {
 			// fprintf(stderr, "Drop redundent packet %llu\n", (long long unsigned)ntohu64(ubuf.pkt.serial));
 			continue;
 		}
-
 		//fprintf(stderr, "Accepted packet %llu\n", (long long unsigned)ntohu64(ubuf.pkt.serial));
 		serial_prev = serial;
 
@@ -287,12 +285,11 @@ static void *thr_rcv(void *p)
 		ctx->on_recv(ipbuf.ubuf.pkt.data, data_len);
 		//fprintf(stderr, "tunfd: relayed %d bytes.\n", ret);
 	}
-quit:
+ quit:
 	pthread_exit(NULL);
 }
 
-
-static int mod_on_packet_receive(void *p, void(*cb)(const void*, size_t))
+static int mod_on_packet_receive(void *p, void (*cb)(const void *, size_t))
 {
 	struct context_st *ctx = p;
 	ctx->on_recv = cb;
