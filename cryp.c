@@ -5,17 +5,23 @@
 
 #define SALT	0x1027e6f8905c76a3ULL;
 
+static inline uint64_t loop_left_shift(uint64_t a, int n) {
+	n=n%64;
+	return (a<<n)|(a>>(64-n));
+}
+
 void enc(uint8_t *buf, size_t bufsize, uint8_t magic[SZ_MAGIC])
 {
 	assert(SZ_MAGIC == 8);
 	int i, len64;
 	uint64_t *buf64 = (void *)buf;
-	uint64_t *magic64 = (void *)magic;
+	register uint64_t magic64 = (*(uint64_t*)magic) ^ SALT;
 
 	len64 = bufsize / SZ_MAGIC;
 
-	for (i = 0; i < len64; ++i) {
-		buf64[i] = buf64[i] ^ *magic64 ^ SALT;
+	for (i = 0; i < len64; i+=4) {
+		buf64[i] = buf64[i] ^ magic64;
+		magic64 = loop_left_shift(magic64, i);
 	}
 }
 
