@@ -1,6 +1,6 @@
 targets=simple_udp4.so
 
-CFLAGS+=-I../.. -DGNU_SOURCE -fPIC -g -O0
+CFLAGS+=-I../.. -DGNU_SOURCE -fPIC -O3
 
 all: $(targets)
 

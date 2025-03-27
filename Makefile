@@ -1,6 +1,6 @@
 include config.mk
 
-CFLAGS+= -I. -pthread -Wall -D_GNU_SOURCE -O0 -g
+CFLAGS+= -I. -pthread -Wall -D_GNU_SOURCE -O3
 
 #LDFLAGS+=-lpthread -lm -lssl -lcrypto -lrt -ldl
 LDFLAGS+=-lpthread -lm -ldl -rdynamic
