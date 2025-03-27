@@ -1,4 +1,4 @@
-dirs=simple_udp4
+dirs=simple_udp4 loop
 
 all:
 %:
