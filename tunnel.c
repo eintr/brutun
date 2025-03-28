@@ -15,6 +15,7 @@
 #include <linux/if_tun.h>
 
 #include "util_cjson.h"
+#include "util_time.h"
 #include "tunnel.h"
 
 static int shell(const char *fmt, ...)
@@ -74,6 +75,8 @@ static void cb_recv(void *ptr, void *data, size_t len)
 		if (len != ret) {
 			fprintf(stderr, "write(tun) incomplete: %m\n");
 		}
+		t->statics.cnt_pkts_recv++;
+		t->statics.cnt_bytes_recv += len;
 	}
 }
 
@@ -99,6 +102,8 @@ static void *thr_tun_reader(void *p)
 			if (ctx->carrier != NULL) {
 				dec(buffer, len, ctx->magic);
 				ctx->carrier->interface->send_packet(ctx->carrier->context, buffer, len);
+				ctx->statics.cnt_pkts_sent ++;
+				ctx->statics.cnt_bytes_sent += len;
 			}
 		}
 	}
@@ -115,6 +120,7 @@ struct tunnel_ctx *tunnel_new(const cJSON *conf)
 	assert(ret != NULL);
 
 	ret->tun_fd = -1;
+	memset(&(ret->statics),0,sizeof(ret->statics));
 
 	ret->carrier = carrier_load(cJSON_lookup_obj(conf, ".Carrier", NULL), cb_recv, ret);
 	assert(ret->carrier != NULL);
@@ -185,6 +191,7 @@ struct tunnel_ctx *tunnel_new(const cJSON *conf)
 	shell("ip link set dev %s up", ret->tun_name);
 	ret->flag_loop = 1;
 	assert(pthread_create(&ret->tid_tun_reader, NULL, thr_tun_reader, ret) == 0);
+	ret->statics.timestamp_ms_start = systimestamp_ms();
 
 	return ret;
 }
@@ -203,3 +210,16 @@ void tunnel_delete(struct tunnel_ctx *self)
 	carrier_unload(self->carrier);
 	free(self);
 }
+
+cJSON *tunnel_statics(struct tunnel_ctx *self)
+{
+	cJSON *ret;
+	ret=cJSON_CreateObject();
+	cJSON_AddNumberToObject(ret, "CountPktSent", self->statics.cnt_pkts_sent);
+	cJSON_AddNumberToObject(ret, "CountBytesSent", self->statics.cnt_bytes_sent);
+	cJSON_AddNumberToObject(ret, "CountPktRecved", self->statics.cnt_pkts_recv);
+	cJSON_AddNumberToObject(ret, "CountBytesRecved", self->statics.cnt_bytes_recv);
+	cJSON_AddItemToObject(ret, "Carrier", cJSON_CreateNull());
+	return ret;
+}
+
