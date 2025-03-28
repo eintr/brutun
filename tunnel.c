@@ -188,6 +188,7 @@ struct tunnel_ctx *tunnel_new(const cJSON *conf)
 		}
 	}
 
+	shell("ip link set dev %s mtu 1470", ret->tun_name);
 	shell("ip link set dev %s up", ret->tun_name);
 	ret->flag_loop = 1;
 	assert(pthread_create(&ret->tid_tun_reader, NULL, thr_tun_reader, ret) == 0);
