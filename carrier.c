@@ -43,9 +43,9 @@ struct carrier *carrier_load(const cJSON *conf, void (*on_recv)(void *tun, void 
 		free(carrier_mod_path);
 	}
 
-	ret->context = ret->interface->init(cJSON_lookup_obj(conf, ".Config", NULL));
+	ret->context = ret->interface->init(cJSON_lookup_obj(conf, ".Config", NULL), tun);
 	assert(ret->context != NULL);
-	ret->interface->on_packet_receive(ret->context, on_recv, tun);
+	ret->interface->on_packet_receive(ret->context, on_recv);
 	fprintf(stderr, "Inited plugin: %s\n", ret->interface->name);
 	return ret;
 }

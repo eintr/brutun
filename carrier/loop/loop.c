@@ -15,15 +15,16 @@
 
 struct context_st {
 	void (*on_recv)(void *, void *, size_t);
-	void *tunnel;
+	const void *tunnel;
 };
 
-static void *mod_init(const cJSON *conf)
+static void *mod_init(const cJSON *conf, const void *tun)
 {
 	struct context_st *ctx;
 
 	ctx = malloc(sizeof(*ctx));
 	ctx->on_recv = NULL;
+	ctx->tunnel = tun;
 
 	return ctx;
 }
@@ -44,16 +45,15 @@ static int mod_send_packet(void *p, const void *data, size_t len)
 	}
 	buf = malloc(len);
 	memcpy(buf, data, len);
-	ctx->on_recv(ctx->tunnel, buf, len);
+	ctx->on_recv((void*)ctx->tunnel, buf, len);
 	free(buf);
 	return 0;
 }
 
-static int mod_on_packet_receive(void *p, void (*cb)(void *tun, void *, size_t), void *tun)
+static int mod_on_packet_receive(void *p, void (*cb)(void *tun, void *, size_t))
 {
 	struct context_st *ctx = p;
 	ctx->on_recv = cb;
-	ctx->tunnel = tun;
 	return 0;
 }
 

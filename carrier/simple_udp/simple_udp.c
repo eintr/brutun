@@ -14,10 +14,11 @@
 #include <carrier_interface.h>
 #include <util_time.h>
 
-#include "protocol.h"
+//#include "protocol.h"
 
 #define	BUFSIZE	(65536+4096)
 #define	DEFAULT_DUP_LEVEL	3
+#define DEFAULT_PORT    60001
 
 #define	CODE_DATA	0
 #define	CODE_PING	1
@@ -101,8 +102,8 @@ static void open_udp_sockets(int **sdarr, int *sdarr_sz, const cJSON * conf)
 	if (port_conf == NULL) {
 		*sdarr_sz = 1;
 		*sdarr = malloc(sizeof(int));
-		*sdarr[0] = open_udp_socket(60001);
-		fprintf(stderr, "Opened default UDP port: 60001\n");
+		*sdarr[0] = open_udp_socket(DEFAULT_PORT);
+		fprintf(stderr, "Opened default UDP port: %d\n", DEFAULT_PORT);
 	} else if (port_conf->type == cJSON_Number) {
 		*sdarr_sz = 1;
 		*sdarr = malloc(sizeof(int));
@@ -161,7 +162,7 @@ struct context_st {
 	int loop;
 
 	void (*on_recv)(void *, void *, size_t);
-	void *tunnel;
+	const void *tunnel;
 
 	int *ports;
 	int *sockets;
@@ -169,7 +170,7 @@ struct context_st {
 	int dup_level;
 };
 
-static void *mod_init(const cJSON * conf)
+static void *mod_init(const cJSON * conf, const void *tun)
 {
 	struct context_st *ctx;
 	int err, remote_port;
@@ -179,6 +180,7 @@ static void *mod_init(const cJSON * conf)
 
 	ctx = malloc(sizeof(*ctx));
 	ctx->peer_addr = (void *)&ctx->peer_addr_storage;
+	ctx->tunnel = tun;
 
 	remote_ip = cJSON_lookup_str(conf, ".RemoteAddress", NULL);
 	remote_port = cJSON_lookup_int(conf, ".RemotePort", 60001);
@@ -333,7 +335,7 @@ static void *thr_rcv(void *p)
 				//dec(ubuf.pkt.data, data_len, ctx->magic);
 
 				//fprintf(stderr, "tunfd: Got %d bytes.\n", data_len);
-				ctx->on_recv(ctx->tunnel, ubuf.pkt.data, data_len);
+				ctx->on_recv((void*)ctx->tunnel, ubuf.pkt.data, data_len);
 				//fprintf(stderr, "tunfd: relayed %d bytes.\n", ret);
 			}
 		}
@@ -342,16 +344,15 @@ static void *thr_rcv(void *p)
 	pthread_exit(NULL);
 }
 
-static int mod_on_packet_receive(void *p, void (*cb)(void *tun, void *, size_t), void *tun)
+static int mod_on_packet_receive(void *p, void (*cb)(void *tun, void *, size_t))
 {
 	struct context_st *ctx = p;
 	ctx->on_recv = cb;
-	ctx->tunnel = tun;
 	return 0;
 }
 
 carrier_interface_t carrier_interface = {
-	.name = "simple_udp4",
+	.name = "simple_udp",
 	.init = mod_init,
 	.send_packet = mod_send_packet,
 	.on_packet_receive = mod_on_packet_receive,
