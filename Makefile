@@ -22,6 +22,13 @@ install: all
 	install $(SERVERFNAME) $(INSTALL_SBINDIR)
 	install carrier/*/*.so $(INSTALL_PLUGINDIR)
 
+tarball: all
+	mkdir -p .root/$(SBINDIR) .root/$(PLUGINDIR)
+	install $(SERVERFNAME) .root/$(SBINDIR)
+	install carrier/*/*.so .root/$(PLUGINDIR)
+	tar -cf brutun_install-0-$(shell uname -m).tar.gz -C .root .
+	$(RM) -r .root
+
 clean:
 	make -C carrier $@
 	rm -f $(objects) $(SERVERFNAME)
